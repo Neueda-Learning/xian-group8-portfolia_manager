@@ -1,14 +1,9 @@
 package com.example.portfoilo_manager.model;
 
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 
-@Data
-@NoArgsConstructor
 public class Holding {
     private int id;
     private String symbol;
@@ -19,6 +14,94 @@ public class Holding {
     private BigDecimal purchasePrice;
     private BigDecimal currentPrice;
     private LocalDate purchaseDate;
+
+    public Holding() {
+    }
+
+    public Holding(int id, String symbol, String companyName, int categoryId, String categoryName,
+                   BigDecimal shares, BigDecimal purchasePrice, BigDecimal currentPrice, LocalDate purchaseDate) {
+        this.id = id;
+        this.symbol = symbol;
+        this.companyName = companyName;
+        this.categoryId = categoryId;
+        this.categoryName = categoryName;
+        this.shares = shares;
+        this.purchasePrice = purchasePrice;
+        this.currentPrice = currentPrice;
+        this.purchaseDate = purchaseDate;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getSymbol() {
+        return symbol;
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public int getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(int categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
+    }
+
+    public BigDecimal getShares() {
+        return shares;
+    }
+
+    public void setShares(BigDecimal shares) {
+        this.shares = shares;
+    }
+
+    public BigDecimal getPurchasePrice() {
+        return purchasePrice;
+    }
+
+    public void setPurchasePrice(BigDecimal purchasePrice) {
+        this.purchasePrice = purchasePrice;
+    }
+
+    public BigDecimal getCurrentPrice() {
+        return currentPrice;
+    }
+
+    public void setCurrentPrice(BigDecimal currentPrice) {
+        this.currentPrice = currentPrice;
+    }
+
+    public LocalDate getPurchaseDate() {
+        return purchaseDate;
+    }
+
+    public void setPurchaseDate(LocalDate purchaseDate) {
+        this.purchaseDate = purchaseDate;
+    }
 
     /** Current market value = shares * currentPrice. */
     public BigDecimal getMarketValue() {
