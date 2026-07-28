@@ -1,7 +1,6 @@
 package com.example.portfoilo_manager.service;
 
 import com.example.portfoilo_manager.dto.DashboardResponse;
-import com.example.portfoilo_manager.dto.HoldingRankingResponse;
 import com.example.portfoilo_manager.model.Holding;
 import com.example.portfoilo_manager.repository.HoldingRepository;
 import org.springframework.stereotype.Service;
