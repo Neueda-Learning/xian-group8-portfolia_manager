@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Portfolio Manager - Asset Categories</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main>
+    <h1>Asset Categories</h1>
+    <div id="error" class="error-banner"></div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Add Asset Category</h2>
+        </div>
+        <form id="addCategoryForm">
+            <div class="form-row">
+                <input type="text" id="categoryName" placeholder="Category Name (e.g. Real Estate)" required>
+                <input type="text" id="description" placeholder="Description">
+            </div>
+            <button type="submit">+ Add Asset</button>
+        </form>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Categories</h2>
+        </div>
+        <table>
+            <thead>
+            <tr>
+                <th>Category</th>
+                <th>Description</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody id="categoriesBody"></tbody>
+        </table>
+        <div id="categoriesEmpty" class="empty-state" style="display:none;">No categories yet. Add one above.</div>
+    </div>
+</main>
+
+<script src="js/navbar.js"></script>
+<script src="js/api.js"></script>
+<script>
+    renderNavbar("categories");
+
+    async function loadCategories() {
+        try {
+            const categories = await Api.getCategories();
+            const body = document.getElementById("categoriesBody");
+            const empty = document.getElementById("categoriesEmpty");
+            if (!categories.length) {
+                body.innerHTML = "";
+                empty.style.display = "block";
+                return;
+            }
+            empty.style.display = "none";
+            body.innerHTML = categories.map(c => `
+                <tr>
+                    <td>${c.categoryName}</td>
+                    <td>${c.description ?? ""}</td>
+                    <td><button class="danger" onclick="deleteCategory(${c.id})">Delete</button></td>
+                </tr>
+            `).join("");
+        } catch (e) {
+            showError("error", "Failed to load asset categories: " + e.message);
+        }
+    }
+
+    async function deleteCategory(id) {
+        if (!confirm("Delete this asset category?")) return;
+        try {
+            await Api.deleteCategory(id);
+            await loadCategories();
+        } catch (e) {
+            showError("error", "Failed to delete category: " + e.message);
+        }
+    }
+
+    document.getElementById("addCategoryForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const category = {
+            categoryName: document.getElementById("categoryName").value.trim(),
+            description: document.getElementById("description").value.trim()
+        };
+        try {
+            await Api.addCategory(category);
+            event.target.reset();
+            await loadCategories();
+        } catch (e) {
+            showError("error", "Failed to add category: " + e.message);
+        }
+    });
+
+    loadCategories();
+</script>
+</body>
+</html>
+

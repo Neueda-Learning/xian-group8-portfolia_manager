@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Portfolio Manager - Performance</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<main>
+    <h1>Portfolio Performance</h1>
+    <div id="error" class="error-banner"></div>
+
+    <div class="section">
+        <div class="range-selector" id="rangeSelector">
+            <button data-range="1M">1M</button>
+            <button data-range="3M">3M</button>
+            <button data-range="6M">6M</button>
+            <button data-range="1Y">1Y</button>
+            <button data-range="MAX" class="active">MAX</button>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="performanceChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Performance Summary</h2>
+        </div>
+        <div class="ranking-grid">
+            <div class="card">
+                <div class="label">Top Gainer</div>
+                <div class="value positive" id="topGainer">--</div>
+            </div>
+            <div class="card">
+                <div class="label">Top Loser</div>
+                <div class="value negative" id="topLoser">--</div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script src="js/navbar.js"></script>
+<script src="js/api.js"></script>
+<script>
+    renderNavbar("performance");
+
+    let chartInstance = null;
+    let fullCurve = [];
+
+    function filterByRange(curve, range) {
+        if (!curve.length) return curve;
+        const latest = new Date(curve[curve.length - 1].time);
+        const cutoff = new Date(latest);
+        switch ((range || "MAX").toUpperCase()) {
+            case "1M": cutoff.setMonth(cutoff.getMonth() - 1); break;
+            case "3M": cutoff.setMonth(cutoff.getMonth() - 3); break;
+            case "6M": cutoff.setMonth(cutoff.getMonth() - 6); break;
+            case "1Y": cutoff.setFullYear(cutoff.getFullYear() - 1); break;
+            default: return curve; // MAX
+        }
+        const filtered = curve.filter(p => new Date(p.time) >= cutoff);
+        return filtered.length ? filtered : curve;
+    }
+
+    function formatLabel(isoTime) {
+        const d = new Date(isoTime);
+        return d.toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderChart(points) {
+        const labels = points.map(p => formatLabel(p.time));
+        const values = points.map(p => p.portfolioValue);
+
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+        chartInstance = new Chart(document.getElementById("performanceChart"), {
+            type: "line",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Portfolio Value",
+                    data: values,
+                    borderColor: "#6366f1",
+                    backgroundColor: "rgba(99, 102, 241, 0.15)",
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 1.5
+                }]
+            },
+            options: {
+                animation: false,
+                scales: {
+                    x: {
+                        ticks: { color: "#94a3b8", maxTicksLimit: 12, autoSkip: true },
+                        grid: { color: "#334155" }
+                    },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } }
+                },
+                plugins: {
+                    legend: { labels: { color: "#e2e8f0" } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `Value: ${formatCurrency(ctx.parsed.y)}`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async function loadPerformance(range) {
+        try {
+            if (!fullCurve.length) {
+                fullCurve = await Api.getPerformanceCurve();
+            }
+            renderChart(filterByRange(fullCurve, range));
+        } catch (e) {
+            showError("error", "Failed to load performance history: " + e.message);
+        }
+    }
+
+
+    async function loadRanking() {
+        try {
+            const ranking = await Api.getRanking();
+            document.getElementById("topGainer").textContent =
+                ranking.topGainerSymbol ? `${ranking.topGainerSymbol}  ${formatPercent(ranking.topGainerRate)}` : "--";
+            document.getElementById("topLoser").textContent =
+                ranking.topLoserSymbol ? `${ranking.topLoserSymbol}  ${formatPercent(ranking.topLoserRate)}` : "--";
+        } catch (e) {
+            showError("error", "Failed to load performance ranking: " + e.message);
+        }
+    }
+
+    document.getElementById("rangeSelector").addEventListener("click", (event) => {
+        const btn = event.target.closest("button[data-range]");
+        if (!btn) return;
+        document.querySelectorAll("#rangeSelector button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        loadPerformance(btn.dataset.range);
+    });
+
+    loadPerformance("MAX");
+    loadRanking();
+</script>
+</body>
+</html>
+
