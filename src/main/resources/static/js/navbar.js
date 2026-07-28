@@ -4,6 +4,7 @@ function renderNavbar(active) {
         { href: "holdings.html", label: "Holdings", key: "holdings" },
         { href: "categories.html", label: "Asset Categories", key: "categories" },
         { href: "performance.html", label: "Performance", key: "performance" }
+        { href: "holdings.html", label: "Holdings", key: "holdings" }
     ];
 
     const nav = document.createElement("div");
