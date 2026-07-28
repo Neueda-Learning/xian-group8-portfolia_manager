@@ -1,7 +1,7 @@
-package cn.lito.portfoilomanager.controller;
+package com.group8.portfolio_manager.controller;
 
-import cn.lito.portfoilomanager.dto.AssetCategoryOption;
-import cn.lito.portfoilomanager.service.AssetCategoryService;
+import com.group8.portfolio_manager.dto.AssetCategoryOption;
+import com.group8.portfolio_manager.service.AssetCategoryService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;

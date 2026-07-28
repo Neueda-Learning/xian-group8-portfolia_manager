@@ -1,4 +1,4 @@
-package cn.lito.portfoilomanager.dto;
+package com.group8.portfolio_manager.dto;
 
 public class AssetCategoryOption {
     private int id;

@@ -1,4 +1,4 @@
-package cn.lito.portfoilomanager.model;
+package com.group8.portfolio_manager.model;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

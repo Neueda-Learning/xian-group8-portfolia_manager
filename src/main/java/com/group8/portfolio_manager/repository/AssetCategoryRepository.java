@@ -1,6 +1,6 @@
-package cn.lito.portfoilomanager.repository;
+package com.group8.portfolio_manager.repository;
 
-import cn.lito.portfoilomanager.dto.AssetCategoryOption;
+import com.group8.portfolio_manager.dto.AssetCategoryOption;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 

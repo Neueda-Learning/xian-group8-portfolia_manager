@@ -1,7 +1,7 @@
-package cn.lito.portfoilomanager.service;
+package com.group8.portfolio_manager.service;
 
-import cn.lito.portfoilomanager.model.Holding;
-import cn.lito.portfoilomanager.repository.HoldingRepository;
+import com.group8.portfolio_manager.model.Holding;
+import com.group8.portfolio_manager.repository.HoldingRepository;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.stereotype.Service;
@@ -15,13 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 @Service
 public class HoldingService {

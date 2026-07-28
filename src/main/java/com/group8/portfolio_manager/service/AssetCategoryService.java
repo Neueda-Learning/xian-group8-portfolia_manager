@@ -1,7 +1,7 @@
-package cn.lito.portfoilomanager.service;
+package com.group8.portfolio_manager.service;
 
-import cn.lito.portfoilomanager.dto.AssetCategoryOption;
-import cn.lito.portfoilomanager.repository.AssetCategoryRepository;
+import com.group8.portfolio_manager.dto.AssetCategoryOption;
+import com.group8.portfolio_manager.repository.AssetCategoryRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

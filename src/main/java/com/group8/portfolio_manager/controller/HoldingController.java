@@ -1,7 +1,7 @@
-package cn.lito.portfoilomanager.controller;
+package com.group8.portfolio_manager.controller;
 
-import cn.lito.portfoilomanager.model.Holding;
-import cn.lito.portfoilomanager.service.HoldingService;
+import com.group8.portfolio_manager.model.Holding;
+import com.group8.portfolio_manager.service.HoldingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;

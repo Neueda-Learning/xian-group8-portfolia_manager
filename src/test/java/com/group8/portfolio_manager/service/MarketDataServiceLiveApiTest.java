@@ -1,4 +1,4 @@
-package com.example.portfoilo_manager.service;
+package com.group8.portfolio_manager.service;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;

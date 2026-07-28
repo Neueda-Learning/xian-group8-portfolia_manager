@@ -1,13 +1,13 @@
-package com.example.portfoilo_manager;
+package com.group8.portfolio_manager;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class PortfoiloManagerApplication {
+public class PortfolioManagerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(PortfoiloManagerApplication.class, args);
+        SpringApplication.run(PortfolioManagerApplication.class, args);
     }
 
 }

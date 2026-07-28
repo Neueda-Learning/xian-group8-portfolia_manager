@@ -1,7 +1,7 @@
-package com.example.portfoilo_manager.service;
+package com.group8.portfolio_manager.service;
 
-import com.example.portfoilo_manager.model.PortfolioHistory;
-import com.example.portfoilo_manager.repository.PortfolioHistoryRepository;
+import com.group8.portfolio_manager.model.PortfolioHistory;
+import com.group8.portfolio_manager.repository.PortfolioHistoryRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
