@@ -33,6 +33,13 @@ public class HoldingRepository {
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> mapRow(rs), id);
     }
 
+    public Holding findBySymbol(String symbol) {
+        String sql = "select h.*, c.category_name from holdings h " +
+                "join asset_category c on h.category_id = c.id where upper(h.symbol)=upper(?) limit 1";
+        List<Holding> list = jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), symbol);
+        return list.isEmpty() ? null : list.get(0);
+    }
+
     public int save(Holding holding) {
         String sql = "insert into holdings (symbol, company_name, category_id, shares, purchase_price, current_price, purchase_date) " +
                 "values (?, ?, ?, ?, ?, ?, ?)";
@@ -60,6 +67,16 @@ public class HoldingRepository {
     public int updateCurrentPriceBySymbol(String symbol, BigDecimal currentPrice) {
         String sql = "update holdings set current_price=? where symbol=?";
         return jdbcTemplate.update(sql, currentPrice, symbol);
+    }
+
+    public int updateHoldingAfterTrade(int id, BigDecimal shares, BigDecimal purchasePrice, BigDecimal currentPrice) {
+        String sql = "update holdings set shares=?, purchase_price=?, current_price=? where id=?";
+        return jdbcTemplate.update(sql, shares, purchasePrice, currentPrice, id);
+    }
+
+    public int updateHoldingSharesAndPrice(int id, BigDecimal shares, BigDecimal currentPrice) {
+        String sql = "update holdings set shares=?, current_price=? where id=?";
+        return jdbcTemplate.update(sql, shares, currentPrice, id);
     }
 
     public Map<String, BigDecimal> sumValueByCategory() {

@@ -1,6 +1,6 @@
 package com.group8.portfolio_manager.service;
 
-import com.group8.portfolio_manager.dto.AssetCategoryOption;
+import com.group8.portfolio_manager.model.AssetCategory;
 import com.group8.portfolio_manager.repository.AssetCategoryRepository;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +14,24 @@ public class AssetCategoryService {
         this.repository = repository;
     }
 
-    public List<AssetCategoryOption> getAllCategories() {
-        return repository.findAllOptions();
+    public List<AssetCategory> getAllCategories() {
+        return repository.findAll();
+    }
+
+    public AssetCategory getCategoryById(Integer id) {
+        return repository.findById(id);
+    }
+
+    public AssetCategory addCategory(AssetCategory category) {
+        if (category == null || category.getCategoryName() == null || category.getCategoryName().isBlank()) {
+            throw new IllegalArgumentException("categoryName is required");
+        }
+        int id = repository.save(category);
+        category.setId(id);
+        return category;
+    }
+
+    public boolean deleteCategory(Integer id) {
+        return repository.deleteById(id) > 0;
     }
 }

@@ -28,7 +28,11 @@ const Api = (() => {
         // Holdings
         getHoldings: () => request("/api/holdings"),
         addHolding: (holding) => request("/api/holdings", { method: "POST", body: JSON.stringify(holding) }),
+        refreshHoldingPrices: () => request("/api/holdings/refresh-prices", { method: "POST" }),
+        getPriceSeries: (ticker) => request(`/api/holdings/price-series?ticker=${encodeURIComponent(ticker)}`),
         deleteHolding: (id) => request(`/api/holdings/${id}`, { method: "DELETE" }),
+        tradeHolding: (trade) => request("/api/holdings/trade", { method: "POST", body: JSON.stringify(trade) }),
+        getRecentTrades: (limit = 30) => request(`/api/holdings/trades?limit=${encodeURIComponent(limit)}`),
 
         // Asset categories
         getCategories: () => request("/api/categories"),

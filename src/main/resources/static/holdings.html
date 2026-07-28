@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Portfolio Manager - Holdings</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
 <main>
@@ -33,7 +34,14 @@
     <div class="section">
         <div class="section-header">
             <h2>Holdings</h2>
+            <div class="header-actions">
+                <select id="holdingCategoryFilter">
+                    <option value="">All Types</option>
+                </select>
+                <button type="button" id="refreshPricesBtn">Refresh Prices</button>
+            </div>
         </div>
+        <div class="table-wrap">
         <table>
             <thead>
             <tr>
@@ -44,12 +52,67 @@
                 <th>Price</th>
                 <th>Value</th>
                 <th>P/L</th>
-                <th></th>
+                <th>Actions</th>
             </tr>
             </thead>
             <tbody id="holdingsBody"></tbody>
         </table>
+        </div>
         <div id="holdingsEmpty" class="empty-state" style="display:none;">No holdings yet. Add one above.</div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Recent Trades</h2>
+            <button type="button" id="reloadTradesBtn" class="secondary">Reload</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Symbol</th>
+                    <th>Type</th>
+                    <th>Shares</th>
+                    <th>Price</th>
+                    <th>Amount</th>
+                    <th>Cash Change</th>
+                    <th>Note</th>
+                </tr>
+                </thead>
+                <tbody id="tradeBody"></tbody>
+            </table>
+        </div>
+        <div id="tradeEmpty" class="empty-state" style="display:none;">No trade records yet.</div>
+    </div>
+
+    <div id="tradePanel" class="trade-panel" style="display:none;">
+        <div class="trade-panel-card">
+            <div class="section-header">
+                <h2 id="tradePanelTitle">Trade</h2>
+                <button type="button" id="tradePanelCloseBtn" class="secondary">Close</button>
+            </div>
+            <form id="tradePanelForm">
+                <div class="form-row">
+                    <input type="text" id="modalSymbol" readonly>
+                    <input type="text" id="modalTradeType" readonly>
+                </div>
+                <div class="form-row">
+                    <input type="number" step="0.0001" id="modalTradeShares" placeholder="Trade Shares" required>
+                    <input type="number" step="0.01" id="modalTradePrice" placeholder="Trade Price" required>
+                    <input type="number" step="0.01" id="modalTradeFee" placeholder="Fee (optional)">
+                    <input type="date" id="modalTradeDate" required>
+                </div>
+                <div class="form-row">
+                    <input type="text" id="modalTradeNote" placeholder="Note (optional)">
+                </div>
+                <div id="tradePanelError" class="error-banner" style="display:none;"></div>
+                <div class="form-row">
+                    <button type="submit">Submit Trade</button>
+                    <button type="button" id="tradePanelCancelBtn" class="secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
     </div>
 </main>
 
@@ -57,47 +120,175 @@
 <script src="js/api.js"></script>
 <script>
     renderNavbar("holdings");
+    const CASH_SYMBOL = "USD_CASH";
+    let latestHoldings = [];
+    let currentTradeHoldingId = null;
+    let currentTradeTypeCode = null;
+
+    function formatNumber(value, digits = 4) {
+        const num = Number(value ?? 0);
+        return num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: digits });
+    }
+
+    function getTradeButtons(holding) {
+        if ((holding.symbol || "").toUpperCase() === CASH_SYMBOL) {
+            return `
+                <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'DEPOSIT')">Deposit</button>
+                <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'WITHDRAW')">Withdraw</button>
+            `;
+        }
+        return `
+            <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'BUY')">Buy</button>
+            <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'SELL')">Sell</button>
+        `;
+    }
+
+    function closeTradePanel() {
+        document.getElementById("tradePanel").style.display = "none";
+        document.body.style.overflow = "";
+        document.getElementById("tradePanelError").style.display = "none";
+        document.getElementById("tradePanelError").textContent = "";
+        document.getElementById("tradePanelForm").reset();
+        currentTradeHoldingId = null;
+        currentTradeTypeCode = null;
+    }
+
+    function openTradePanel(holding, tradeTypeCode) {
+        currentTradeHoldingId = holding.id;
+        currentTradeTypeCode = tradeTypeCode;
+        document.getElementById("tradePanelTitle").textContent = `${tradeTypeCode} ${holding.symbol}`;
+        document.getElementById("modalSymbol").value = holding.symbol || "";
+        document.getElementById("modalTradeType").value = tradeTypeCode;
+        document.getElementById("modalTradeShares").value = "";
+        document.getElementById("modalTradePrice").value = String((holding.symbol || "").toUpperCase() === CASH_SYMBOL ? 1 : Number(holding.currentPrice || 1));
+        document.getElementById("modalTradeFee").value = "0";
+        document.getElementById("modalTradeDate").valueAsDate = new Date();
+        document.getElementById("tradePanelError").style.display = "none";
+        document.getElementById("tradePanel").style.display = "flex";
+        document.body.style.overflow = "hidden";
+    }
+
+    function showTradePanelError(message) {
+        const error = document.getElementById("tradePanelError");
+        error.textContent = message;
+        error.style.display = "block";
+    }
 
     async function loadCategoriesIntoSelect() {
-        const select = document.getElementById("categoryId");
         try {
             const categories = await Api.getCategories();
+            const select = document.getElementById("categoryId");
             select.innerHTML = categories.map(c => `<option value="${c.id}">${c.categoryName}</option>`).join("");
+
+            const categoryFilter = document.getElementById("holdingCategoryFilter");
+            const selectedFilter = categoryFilter.value;
+            categoryFilter.innerHTML = [
+                `<option value="">All Types</option>`,
+                ...categories.map(c => `<option value="${c.id}">${c.categoryName}</option>`)
+            ].join("");
+            if (selectedFilter && categories.some(c => String(c.id) === selectedFilter)) {
+                categoryFilter.value = selectedFilter;
+            }
         } catch (e) {
             showError("error", "Failed to load asset categories: " + e.message);
         }
     }
 
+    function getFilteredHoldings() {
+        const filterValue = document.getElementById("holdingCategoryFilter").value;
+        if (!filterValue) {
+            return latestHoldings;
+        }
+        return latestHoldings.filter(h => String(h.categoryId) === filterValue);
+    }
+
+    function renderHoldingsTable() {
+        const holdings = getFilteredHoldings();
+        const body = document.getElementById("holdingsBody");
+        const empty = document.getElementById("holdingsEmpty");
+        if (!holdings.length) {
+            body.innerHTML = "";
+            empty.style.display = "block";
+            return;
+        }
+
+        empty.style.display = "none";
+        body.innerHTML = holdings.map(h => {
+            const value = h.shares * h.currentPrice;
+            const pl = (h.currentPrice - h.purchasePrice) * h.shares;
+            return `
+                <tr>
+                    <td>${h.symbol}</td>
+                    <td>${h.companyName}</td>
+                    <td>${h.categoryName ?? ""}</td>
+                    <td>${h.shares}</td>
+                    <td>${formatCurrency(h.currentPrice)}</td>
+                    <td>${formatCurrency(value)}</td>
+                    <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(pl)}</td>
+                    <td class="action-cell">
+                        ${getTradeButtons(h)}
+                        <button class="danger trade-action-btn" onclick="deleteHolding(${h.id})">Delete</button>
+                    </td>
+                </tr>
+            `;
+        }).join("");
+    }
+
     async function loadHoldings() {
         try {
             const holdings = await Api.getHoldings();
-            const body = document.getElementById("holdingsBody");
-            const empty = document.getElementById("holdingsEmpty");
+            latestHoldings = holdings;
             if (!holdings.length) {
+                document.getElementById("holdingsBody").innerHTML = "";
+                document.getElementById("holdingsEmpty").style.display = "block";
+                return;
+            }
+            renderHoldingsTable();
+        } catch (e) {
+            showError("error", "Failed to load holdings: " + e.message);
+        }
+    }
+
+    async function loadRecentTrades() {
+        try {
+            const trades = await Api.getRecentTrades(30);
+            const body = document.getElementById("tradeBody");
+            const empty = document.getElementById("tradeEmpty");
+            if (!trades.length) {
                 body.innerHTML = "";
                 empty.style.display = "block";
                 return;
             }
+
             empty.style.display = "none";
-            body.innerHTML = holdings.map(h => {
-                const value = h.shares * h.currentPrice;
-                const pl = (h.currentPrice - h.purchasePrice) * h.shares;
+            body.innerHTML = trades.map(t => {
+                const unitPrice = t.buyPrice ?? t.sellPrice ?? 0;
+                const cashClass = Number(t.cashChange) >= 0 ? "value positive" : "value negative";
                 return `
                     <tr>
-                        <td>${h.symbol}</td>
-                        <td>${h.companyName}</td>
-                        <td>${h.categoryName ?? ""}</td>
-                        <td>${h.shares}</td>
-                        <td>${formatCurrency(h.currentPrice)}</td>
-                        <td>${formatCurrency(value)}</td>
-                        <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(pl)}</td>
-                        <td><button class="danger" onclick="deleteHolding(${h.id})">Delete</button></td>
+                        <td>${t.tradeDate ?? ""}</td>
+                        <td>${t.assetSymbol ?? ""}</td>
+                        <td>${t.tradeTypeCode ?? ""}</td>
+                        <td>${formatNumber(t.tradeShares)}</td>
+                        <td>${formatCurrency(unitPrice)}</td>
+                        <td>${formatCurrency(t.tradeAmount)}</td>
+                        <td class="${cashClass}">${formatCurrency(t.cashChange)}</td>
+                        <td>${t.note ?? ""}</td>
                     </tr>
                 `;
             }).join("");
         } catch (e) {
-            showError("error", "Failed to load holdings: " + e.message);
+            showError("error", "Failed to load trades: " + e.message);
         }
+    }
+
+    async function tradeForHolding(id, tradeTypeCode) {
+        const holding = latestHoldings.find(h => h.id === id);
+        if (!holding) {
+            showError("error", "Holding not found.");
+            return;
+        }
+        openTradePanel(holding, tradeTypeCode);
     }
 
     async function deleteHolding(id) {
@@ -107,6 +298,24 @@
             await loadHoldings();
         } catch (e) {
             showError("error", "Failed to delete holding: " + e.message);
+        }
+    }
+
+    async function refreshPrices() {
+        const btn = document.getElementById("refreshPricesBtn");
+        btn.disabled = true;
+        btn.textContent = "Refreshing...";
+        try {
+            const result = await Api.refreshHoldingPrices();
+            await loadHoldings();
+            const skipped = result.skippedUnsupported?.length ?? 0;
+            const failed = result.failed?.length ?? 0;
+            alert(`Price refresh done. Updated rows: ${result.updatedRows}, skipped: ${skipped}, failed: ${failed}`);
+        } catch (e) {
+            showError("error", "Failed to refresh prices: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Refresh Prices";
         }
     }
 
@@ -130,8 +339,73 @@
         }
     });
 
+    document.getElementById("holdingCategoryFilter").addEventListener("change", renderHoldingsTable);
+    document.getElementById("refreshPricesBtn").addEventListener("click", refreshPrices);
+    document.getElementById("reloadTradesBtn").addEventListener("click", loadRecentTrades);
+    document.getElementById("tradePanelCloseBtn").addEventListener("click", closeTradePanel);
+    document.getElementById("tradePanelCancelBtn").addEventListener("click", closeTradePanel);
+    document.getElementById("tradePanel").addEventListener("click", (event) => {
+        if (event.target.id === "tradePanel") {
+            closeTradePanel();
+        }
+    });
+
+    document.getElementById("tradePanelForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const holding = latestHoldings.find(h => h.id === currentTradeHoldingId);
+        if (!holding || !currentTradeTypeCode) {
+            showTradePanelError("Trade context is invalid. Please retry.");
+            return;
+        }
+
+        const tradeShares = Number(document.getElementById("modalTradeShares").value);
+        const tradePrice = Number(document.getElementById("modalTradePrice").value);
+        const fee = Number(document.getElementById("modalTradeFee").value || 0);
+        const tradeDate = (document.getElementById("modalTradeDate").value || "").trim();
+        const note = (document.getElementById("modalTradeNote").value || "").trim();
+
+        if (!Number.isFinite(tradeShares) || tradeShares <= 0) {
+            showTradePanelError("Shares must be a positive number.");
+            return;
+        }
+        if (!Number.isFinite(tradePrice) || tradePrice <= 0) {
+            showTradePanelError("Price must be a positive number.");
+            return;
+        }
+        if (!Number.isFinite(fee) || fee < 0) {
+            showTradePanelError("Fee must be >= 0.");
+            return;
+        }
+        if (!tradeDate) {
+            showTradePanelError("Trade date is required.");
+            return;
+        }
+
+        const symbol = (holding.symbol || "").toUpperCase();
+        const trade = {
+            assetSymbol: symbol,
+            tradeTypeCode: currentTradeTypeCode,
+            tradeShares,
+            tradePrice,
+            tradeDate,
+            fee,
+            note
+        };
+
+        try {
+            await Api.tradeHolding(trade);
+            closeTradePanel();
+            await loadHoldings();
+            await loadRecentTrades();
+        } catch (e) {
+            showTradePanelError("Failed to submit trade: " + e.message);
+        }
+    });
+
     loadCategoriesIntoSelect();
     loadHoldings();
+    loadRecentTrades();
 </script>
 </body>
 </html>
