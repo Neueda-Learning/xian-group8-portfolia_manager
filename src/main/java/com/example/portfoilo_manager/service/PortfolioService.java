@@ -1,6 +1,7 @@
 package com.example.portfoilo_manager.service;
 
 import com.example.portfoilo_manager.dto.DashboardResponse;
+import com.example.portfoilo_manager.dto.HoldingRankingResponse;
 import com.example.portfoilo_manager.model.Holding;
 import com.example.portfoilo_manager.repository.HoldingRepository;
 import org.springframework.stereotype.Service;
@@ -30,10 +31,7 @@ public class PortfolioService {
 
         BigDecimal totalValue = BigDecimal.ZERO;
         BigDecimal totalCost = BigDecimal.ZERO;
-        BigDecimal cashValue = BigDecimal.ZERO;
-        BigDecimal stockValue = BigDecimal.ZERO;
-        BigDecimal bondValue = BigDecimal.ZERO;
-        BigDecimal cryptoValue = BigDecimal.ZERO;
+        Map<String, BigDecimal> categoryValues = new LinkedHashMap<>();
 
         for (Holding h : holdings) {
             BigDecimal marketValue = h.getMarketValue();
@@ -42,30 +40,25 @@ public class PortfolioService {
             totalCost = totalCost.add(cost);
 
             String category = h.getCategoryName() == null ? "" : h.getCategoryName();
-            switch (category) {
-                case "Cash" -> cashValue = cashValue.add(marketValue);
-                case "Stock" -> stockValue = stockValue.add(marketValue);
-                case "Bond" -> bondValue = bondValue.add(marketValue);
-                case "Cryptocurrency" -> cryptoValue = cryptoValue.add(marketValue);
-                default -> {
-                    // other categories (e.g. ETF, Real Estate) aren't shown as a dedicated card
-                }
+            if (!category.isBlank()) {
+                categoryValues.merge(category, marketValue, BigDecimal::add);
             }
         }
 
         double returnRate = totalCost.compareTo(BigDecimal.ZERO) == 0
                 ? 0.0
                 : totalValue.subtract(totalCost)
-                        .divide(totalCost, 6, RoundingMode.HALF_UP)
-                        .doubleValue();
+                .divide(totalCost, 6, RoundingMode.HALF_UP)
+                .doubleValue();
 
         DashboardResponse response = new DashboardResponse();
         response.setTotalValue(totalValue);
         response.setReturnRate(returnRate);
-        response.setCash(cashValue);
-        response.setStocks(stockValue);
-        response.setBonds(bondValue);
-        response.setCrypto(cryptoValue);
+        response.setCash(categoryValues.getOrDefault("Cash", BigDecimal.ZERO));
+        response.setStocks(categoryValues.getOrDefault("Stock", BigDecimal.ZERO));
+        response.setBonds(categoryValues.getOrDefault("Bond", BigDecimal.ZERO));
+        response.setCrypto(categoryValues.getOrDefault("Cryptocurrency", BigDecimal.ZERO));
+        response.setCategoryValues(categoryValues);
         return response;
     }
 
