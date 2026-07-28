@@ -1,6 +1,8 @@
 package com.example.portfoilo_manager.dto;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Response body for GET /api/dashboard.
@@ -12,18 +14,22 @@ public class DashboardResponse {
     private BigDecimal stocks;
     private BigDecimal bonds;
     private BigDecimal crypto;
+    private Map<String, BigDecimal> categoryValues;
 
     public DashboardResponse() {
+        this.categoryValues = new LinkedHashMap<>();
     }
 
     public DashboardResponse(BigDecimal totalValue, double returnRate, BigDecimal cash,
-                              BigDecimal stocks, BigDecimal bonds, BigDecimal crypto) {
+                             BigDecimal stocks, BigDecimal bonds, BigDecimal crypto,
+                             Map<String, BigDecimal> categoryValues) {
         this.totalValue = totalValue;
         this.returnRate = returnRate;
         this.cash = cash;
         this.stocks = stocks;
         this.bonds = bonds;
         this.crypto = crypto;
+        this.categoryValues = categoryValues;
     }
 
     public BigDecimal getTotalValue() {
@@ -72,6 +78,14 @@ public class DashboardResponse {
 
     public void setCrypto(BigDecimal crypto) {
         this.crypto = crypto;
+    }
+
+    public Map<String, BigDecimal> getCategoryValues() {
+        return categoryValues;
+    }
+
+    public void setCategoryValues(Map<String, BigDecimal> categoryValues) {
+        this.categoryValues = categoryValues;
     }
 }
 
