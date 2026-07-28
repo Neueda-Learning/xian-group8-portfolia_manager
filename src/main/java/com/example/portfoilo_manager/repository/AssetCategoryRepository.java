@@ -29,7 +29,7 @@ public class AssetCategoryRepository {
                 ));
     }
 
-    public AssetCategory findById(int id) {
+    public AssetCategory findById(Integer id) {
         String sql = "select * from asset_category where id=?";
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) ->
                 new AssetCategory(
@@ -52,7 +52,7 @@ public class AssetCategoryRepository {
         return key != null ? key.intValue() : -1;
     }
 
-    public int deleteById(int id) {
+    public int deleteById(Integer id) {
         String sql = "delete from asset_category where id=?";
         return jdbcTemplate.update(sql, id);
     }

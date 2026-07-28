@@ -19,7 +19,7 @@ public class AssetCategoryService {
         return repository.findAll();
     }
 
-    public AssetCategory getCategoryById(int id) {
+    public AssetCategory getCategoryById(Integer id) {
         return repository.findById(id);
     }
 
@@ -29,7 +29,7 @@ public class AssetCategoryService {
         return category;
     }
 
-    public boolean deleteCategory(int id) {
+    public boolean deleteCategory(Integer id) {
         return repository.deleteById(id) > 0;
     }
 }
