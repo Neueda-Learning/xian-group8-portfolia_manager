@@ -1,24 +1,24 @@
 package com.example.portfoilo_manager.model;
 
 public class AssetCategory {
-    private int id;
+    private Integer id;
     private String categoryName;
     private String description;
 
     public AssetCategory() {
     }
 
-    public AssetCategory(int id, String categoryName, String description) {
+    public AssetCategory(Integer id, String categoryName, String description) {
         this.id = id;
         this.categoryName = categoryName;
         this.description = description;
     }
 
-    public int getId() {
+    public Integer getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(Integer id) {
         this.id = id;
     }
 
