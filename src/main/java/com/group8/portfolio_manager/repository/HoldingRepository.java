@@ -8,7 +8,9 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.sql.*;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class HoldingRepository {
@@ -58,6 +60,20 @@ public class HoldingRepository {
     public int updateCurrentPriceBySymbol(String symbol, BigDecimal currentPrice) {
         String sql = "update holdings set current_price=? where symbol=?";
         return jdbcTemplate.update(sql, currentPrice, symbol);
+    }
+
+    public Map<String, BigDecimal> sumValueByCategory() {
+        String sql = "select c.category_name, sum(h.shares * h.current_price) as total_value " +
+                "from holdings h join asset_category c on h.category_id = c.id " +
+                "group by c.category_name order by c.category_name";
+        Map<String, BigDecimal> result = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+        for (Map<String, Object> row : rows) {
+            String category = String.valueOf(row.get("category_name"));
+            BigDecimal totalValue = (BigDecimal) row.get("total_value");
+            result.put(category, totalValue == null ? BigDecimal.ZERO : totalValue);
+        }
+        return result;
     }
 
     private Holding mapRow(ResultSet rs) throws SQLException {

@@ -1,6 +1,6 @@
-package com.example.portfoilo_manager.repository;
+package com.group8.portfolio_manager.repository;
 
-import com.example.portfoilo_manager.model.PriceHistory;
+import com.group8.portfolio_manager.model.PriceHistory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 

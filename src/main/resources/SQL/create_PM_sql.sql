@@ -1,5 +1,5 @@
-create database prot_manager_DB;
-use prot_manager_DB;
+create database portfolio_manager_db;
+use portfolio_manager_db;
 
 
 -- 1. Asset Category Table

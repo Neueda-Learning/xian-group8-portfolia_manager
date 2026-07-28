@@ -9,7 +9,7 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.example</groupId>
-    <artifactId>portfoilo_manager</artifactId>
+    <artifactId>portfolio_manager</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Portfolio Manager</name>
     <description>Portfolio Management REST API</description>

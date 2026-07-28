@@ -1,4 +1,4 @@
-package com.example.portfoilo_manager.dto;
+package com.group8.portfolio_manager.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
