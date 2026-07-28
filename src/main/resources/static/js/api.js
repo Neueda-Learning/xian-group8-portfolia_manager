@@ -37,6 +37,7 @@ const Api = (() => {
 
         // Performance
         getPerformance: (range) => request(`/api/performance${range ? `?range=${range}` : ""}`),
+        getPerformanceCurve: () => request("/api/performance/curve"),
         getRanking: () => request("/api/performance/ranking")
     };
 })();

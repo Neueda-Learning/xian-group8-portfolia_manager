@@ -47,43 +47,82 @@
     renderNavbar("performance");
 
     let chartInstance = null;
+    let fullCurve = [];
+
+    function filterByRange(curve, range) {
+        if (!curve.length) return curve;
+        const latest = new Date(curve[curve.length - 1].time);
+        const cutoff = new Date(latest);
+        switch ((range || "MAX").toUpperCase()) {
+            case "1M": cutoff.setMonth(cutoff.getMonth() - 1); break;
+            case "3M": cutoff.setMonth(cutoff.getMonth() - 3); break;
+            case "6M": cutoff.setMonth(cutoff.getMonth() - 6); break;
+            case "1Y": cutoff.setFullYear(cutoff.getFullYear() - 1); break;
+            default: return curve; // MAX
+        }
+        const filtered = curve.filter(p => new Date(p.time) >= cutoff);
+        return filtered.length ? filtered : curve;
+    }
+
+    function formatLabel(isoTime) {
+        const d = new Date(isoTime);
+        return d.toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function renderChart(points) {
+        const labels = points.map(p => formatLabel(p.time));
+        const values = points.map(p => p.portfolioValue);
+
+        if (chartInstance) {
+            chartInstance.destroy();
+        }
+        chartInstance = new Chart(document.getElementById("performanceChart"), {
+            type: "line",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Portfolio Value",
+                    data: values,
+                    borderColor: "#6366f1",
+                    backgroundColor: "rgba(99, 102, 241, 0.15)",
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 1.5
+                }]
+            },
+            options: {
+                animation: false,
+                scales: {
+                    x: {
+                        ticks: { color: "#94a3b8", maxTicksLimit: 12, autoSkip: true },
+                        grid: { color: "#334155" }
+                    },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } }
+                },
+                plugins: {
+                    legend: { labels: { color: "#e2e8f0" } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `Value: ${formatCurrency(ctx.parsed.y)}`
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     async function loadPerformance(range) {
         try {
-            const history = await Api.getPerformance(range);
-            const labels = history.map(h => h.recordDate);
-            const values = history.map(h => h.portfolioValue);
-
-            if (chartInstance) {
-                chartInstance.destroy();
+            if (!fullCurve.length) {
+                fullCurve = await Api.getPerformanceCurve();
             }
-            chartInstance = new Chart(document.getElementById("performanceChart"), {
-                type: "line",
-                data: {
-                    labels,
-                    datasets: [{
-                        label: "Portfolio Value",
-                        data: values,
-                        borderColor: "#6366f1",
-                        backgroundColor: "rgba(99, 102, 241, 0.15)",
-                        fill: true,
-                        tension: 0.3
-                    }]
-                },
-                options: {
-                    scales: {
-                        x: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } },
-                        y: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } }
-                    },
-                    plugins: {
-                        legend: { labels: { color: "#e2e8f0" } }
-                    }
-                }
-            });
+            renderChart(filterByRange(fullCurve, range));
         } catch (e) {
             showError("error", "Failed to load performance history: " + e.message);
         }
     }
+
 
     async function loadRanking() {
         try {
