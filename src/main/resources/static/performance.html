@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Portfolio Manager - Performance</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<main>
+    <h1>Performance</h1>
+    <div id="error" class="error-banner"></div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Portfolio Value Trend</h2>
+            <div class="range-selector" id="rangeSelector">
+                <button type="button" data-range="1M">1M</button>
+                <button type="button" data-range="3M">3M</button>
+                <button type="button" data-range="6M">6M</button>
+                <button type="button" data-range="1Y">1Y</button>
+                <button type="button" data-range="MAX" class="active">MAX</button>
+            </div>
+        </div>
+        <div class="chart-wrap">
+            <canvas id="performanceChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>History</h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Portfolio Value</th>
+                    <th>Return Rate</th>
+                </tr>
+                </thead>
+                <tbody id="historyBody"></tbody>
+            </table>
+        </div>
+        <div id="historyEmpty" class="empty-state" style="display:none;">No performance records.</div>
+    </div>
+</main>
+
+<script src="js/navbar.js"></script>
+<script src="js/api.js"></script>
+<script>
+    renderNavbar("performance");
+
+    let performanceChart = null;
+    let currentRange = "MAX";
+
+    async function loadPerformance(range) {
+        try {
+            const records = await Api.getPerformance(range);
+            renderHistoryTable(records || []);
+            renderPerformanceChart(records || []);
+            highlightRange(range);
+            currentRange = range;
+        } catch (e) {
+            showError("error", "Failed to load performance: " + e.message);
+        }
+    }
+
+    function renderHistoryTable(records) {
+        const body = document.getElementById("historyBody");
+        const empty = document.getElementById("historyEmpty");
+
+        if (!records.length) {
+            body.innerHTML = "";
+            empty.style.display = "block";
+            return;
+        }
+
+        empty.style.display = "none";
+        body.innerHTML = records.map(r => {
+            const rr = Number(r.returnRate ?? 0) * 100;
+            return `
+                <tr>
+                    <td>${r.recordDate ?? ""}</td>
+                    <td>${formatCurrency(r.portfolioValue)}</td>
+                    <td class="${rr >= 0 ? "value positive" : "value negative"}">${rr.toFixed(2)}%</td>
+                </tr>
+            `;
+        }).join("");
+    }
+
+    function renderPerformanceChart(records) {
+        const labels = records.map(r => r.recordDate);
+        const values = records.map(r => Number(r.portfolioValue ?? 0));
+
+        if (performanceChart) {
+            performanceChart.destroy();
+        }
+
+        performanceChart = new Chart(document.getElementById("performanceChart"), {
+            type: "line",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Portfolio Value",
+                    data: values,
+                    borderColor: "#6366f1",
+                    backgroundColor: "rgba(99, 102, 241, 0.15)",
+                    fill: true,
+                    tension: 0.25,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                scales: {
+                    x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 }, grid: { color: "#334155" } },
+                    y: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } }
+                },
+                plugins: {
+                    legend: { labels: { color: "#e2e8f0" } }
+                }
+            }
+        });
+    }
+
+    function highlightRange(range) {
+        const buttons = document.querySelectorAll("#rangeSelector button");
+        buttons.forEach(btn => {
+            btn.classList.toggle("active", btn.getAttribute("data-range") === range);
+        });
+    }
+
+    document.querySelectorAll("#rangeSelector button").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const range = btn.getAttribute("data-range") || "MAX";
+            if (range === currentRange) return;
+            loadPerformance(range);
+        });
+    });
+
+    loadPerformance("MAX");
+</script>
+</body>
+</html>
+
