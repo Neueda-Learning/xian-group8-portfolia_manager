@@ -56,5 +56,7 @@ public class AssetCategoryRepository {
         String sql = "delete from asset_category where id=?";
         return jdbcTemplate.update(sql, id);
     }
+
+
 }
 
