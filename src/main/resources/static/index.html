@@ -26,7 +26,7 @@
         <div class="section-header">
             <h2>Asset Allocation</h2>
         </div>
-        <div class="chart-wrap">
+        <div class="chart-wrap allocation-chart-wrap">
             <canvas id="allocationChart"></canvas>
         </div>
     </div>
@@ -69,12 +69,11 @@
             returnEl.textContent = formatPercent(summary.returnRate);
             returnEl.classList.add(summary.returnRate >= 0 ? "positive" : "negative");
 
-            const cards = [
-                { label: "Cash Balance", value: summary.cash },
-                { label: "Stocks Value", value: summary.stocks },
-                { label: "Bonds Value", value: summary.bonds },
-                { label: "Crypto Value", value: summary.crypto }
-            ];
+            const categoryValues = summary.categoryValues ?? {};
+            const cards = Object.entries(categoryValues).map(([name, value]) => ({
+                label: `${name} Value`,
+                value
+            }));
             document.getElementById("assetCards").innerHTML = cards.map(c => `
                 <div class="card">
                     <div class="label">${c.label}</div>
@@ -102,8 +101,9 @@
                     }]
                 },
                 options: {
+                    maintainAspectRatio: false,
                     plugins: {
-                        legend: { position: "bottom", labels: { color: "#e2e8f0" } },
+                        legend: { position: "right", labels: { color: "#e2e8f0" } },
                         tooltip: {
                             callbacks: {
                                 label: (ctx) => `${ctx.label}: ${ctx.parsed.toFixed(2)}%`
