@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Portfolio Manager - Holdings</title>
     <link rel="stylesheet" href="css/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
 <main>
@@ -34,7 +33,6 @@
     <div class="section">
         <div class="section-header">
             <h2>Holdings</h2>
-            <button type="button" id="refreshPricesBtn">Refresh Prices</button>
         </div>
         <table>
             <thead>
@@ -53,55 +51,34 @@
         </table>
         <div id="holdingsEmpty" class="empty-state" style="display:none;">No holdings yet. Add one above.</div>
     </div>
-
-    <div class="section">
-        <div class="section-header">
-            <h2>Sample API Price Trend</h2>
-            <button type="button" id="loadChartBtn">Load Chart</button>
-        </div>
-        <div class="form-row">
-            <select id="priceTicker"></select>
-        </div>
-        <div class="chart-wrap">
-            <canvas id="priceChart"></canvas>
-        </div>
-    </div>
 </main>
 
 <script src="js/navbar.js"></script>
 <script src="js/api.js"></script>
 <script>
     renderNavbar("holdings");
-    const SUPPORTED_TICKERS = ["C", "AMZN", "TSLA", "FB", "AAPL"];
-    let priceChart = null;
-    let latestHoldings = [];
 
     async function loadCategoriesIntoSelect() {
+        const select = document.getElementById("categoryId");
         try {
             const categories = await Api.getCategories();
-            const categorySelect = document.getElementById("categoryId");
-            categorySelect.innerHTML = categories.map(c =>
-                `<option value="${c.id}">${c.id} - ${c.categoryName}</option>`
-            ).join("");
+            select.innerHTML = categories.map(c => `<option value="${c.id}">${c.categoryName}</option>`).join("");
         } catch (e) {
-            showError("error", "Failed to load categories: " + e.message);
+            showError("error", "Failed to load asset categories: " + e.message);
         }
     }
 
     async function loadHoldings() {
         try {
             const holdings = await Api.getHoldings();
-            latestHoldings = holdings;
             const body = document.getElementById("holdingsBody");
             const empty = document.getElementById("holdingsEmpty");
             if (!holdings.length) {
                 body.innerHTML = "";
                 empty.style.display = "block";
-                populateTickerSelect([]);
                 return;
             }
             empty.style.display = "none";
-            populateTickerSelect(holdings);
             body.innerHTML = holdings.map(h => {
                 const value = h.shares * h.currentPrice;
                 const pl = (h.currentPrice - h.purchasePrice) * h.shares;
@@ -123,63 +100,6 @@
         }
     }
 
-    function populateTickerSelect(holdings) {
-        const holdingSymbols = new Set(
-            holdings
-                .map(h => (h.symbol || "").trim().toUpperCase())
-                .filter(s => SUPPORTED_TICKERS.includes(s))
-        );
-        const options = (holdingSymbols.size ? Array.from(holdingSymbols) : SUPPORTED_TICKERS);
-        const tickerSelect = document.getElementById("priceTicker");
-        const current = tickerSelect.value;
-        tickerSelect.innerHTML = options.map(t => `<option value="${t}">${t}</option>`).join("");
-        if (current && options.includes(current)) {
-            tickerSelect.value = current;
-        }
-    }
-
-    async function loadPriceChart() {
-        const ticker = document.getElementById("priceTicker").value;
-        if (!ticker) {
-            return;
-        }
-        try {
-            const series = await Api.getPriceSeries(ticker);
-            const labels = series.timestamp || [];
-            const values = series.close || [];
-
-            if (priceChart) {
-                priceChart.destroy();
-            }
-            priceChart = new Chart(document.getElementById("priceChart"), {
-                type: "line",
-                data: {
-                    labels,
-                    datasets: [{
-                        label: `${series.ticker} Close`,
-                        data: values,
-                        borderColor: "#6366f1",
-                        backgroundColor: "rgba(99, 102, 241, 0.15)",
-                        fill: true,
-                        tension: 0.25,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    scales: {
-                        x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 }, grid: { color: "#334155" } },
-                        y: { ticks: { color: "#94a3b8" }, grid: { color: "#334155" } }
-                    },
-                    plugins: {
-                        legend: { labels: { color: "#e2e8f0" } }
-                    }
-                }
-            });
-        } catch (e) {
-            showError("error", "Failed to load price series: " + e.message);
-        }
-    }
-
     async function deleteHolding(id) {
         if (!confirm("Delete this holding?")) return;
         try {
@@ -187,27 +107,6 @@
             await loadHoldings();
         } catch (e) {
             showError("error", "Failed to delete holding: " + e.message);
-        }
-    }
-
-    async function refreshPrices() {
-        const btn = document.getElementById("refreshPricesBtn");
-        btn.disabled = true;
-        btn.textContent = "Refreshing...";
-        try {
-            const result = await Api.refreshHoldingPrices();
-            await loadHoldings();
-            if ((latestHoldings || []).length) {
-                await loadPriceChart();
-            }
-            const skipped = result.skippedUnsupported?.length ?? 0;
-            const failed = result.failed?.length ?? 0;
-            alert(`Price refresh done. Updated rows: ${result.updatedRows}, skipped: ${skipped}, failed: ${failed}`);
-        } catch (e) {
-            showError("error", "Failed to refresh prices: " + e.message);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = "Refresh Prices";
         }
     }
 
@@ -226,18 +125,14 @@
             await Api.addHolding(holding);
             event.target.reset();
             await loadHoldings();
-            await loadPriceChart();
         } catch (e) {
             showError("error", "Failed to add holding: " + e.message);
         }
     });
 
-    document.getElementById("refreshPricesBtn").addEventListener("click", refreshPrices);
-    document.getElementById("loadChartBtn").addEventListener("click", loadPriceChart);
-    document.getElementById("priceTicker").addEventListener("change", loadPriceChart);
-
     loadCategoriesIntoSelect();
-    loadHoldings().then(loadPriceChart);
+    loadHoldings();
 </script>
 </body>
 </html>
+
