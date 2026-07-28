@@ -75,10 +75,9 @@
             await Api.deleteCategory(id);
             await loadCategories();
         } catch (e) {
-            alert("Failed to delete category: " + e.message);
+            showError("error", "Failed to delete category: " + e.message);
         }
     }
-
 
     document.getElementById("addCategoryForm").addEventListener("submit", async (event) => {
         event.preventDefault();
