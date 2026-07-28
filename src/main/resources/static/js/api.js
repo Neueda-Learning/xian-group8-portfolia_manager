@@ -21,6 +21,23 @@ const Api = (() => {
     }
 
     return {
+        // Dashboard
+        getDashboard: () => request("/api/dashboard"),
+        getAllocation: () => request("/api/allocation"),
+
+        // Holdings
+        getHoldings: () => request("/api/holdings"),
+        addHolding: (holding) => request("/api/holdings", { method: "POST", body: JSON.stringify(holding) }),
+        deleteHolding: (id) => request(`/api/holdings/${id}`, { method: "DELETE" }),
+
+        // Asset categories
+        getCategories: () => request("/api/categories"),
+        addCategory: (category) => request("/api/categories", { method: "POST", body: JSON.stringify(category) }),
+        deleteCategory: (id) => request(`/api/categories/${id}`, { method: "DELETE" }),
+
+        // Performance
+        getPerformance: (range) => request(`/api/performance${range ? `?range=${range}` : ""}`),
+        getRanking: () => request("/api/performance/ranking")
         getHoldings: () => request("/api/holdings"),
         getCategories: () => request("/api/categories"),
         addHolding: (holding) => request("/api/holdings", { method: "POST", body: JSON.stringify(holding) }),
@@ -35,9 +52,16 @@ function formatCurrency(value) {
     return num.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 }
 
+function formatPercent(value, alreadyPercent = false) {
+    const num = Number(value ?? 0) * (alreadyPercent ? 1 : 100);
+    const sign = num > 0 ? "+" : "";
+    return `${sign}${num.toFixed(2)}%`;
+}
+
 function showError(containerId, message) {
     const el = document.getElementById(containerId);
     if (!el) return;
     el.textContent = message;
     el.style.display = "block";
 }
+
