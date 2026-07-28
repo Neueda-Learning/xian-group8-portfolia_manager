@@ -4,10 +4,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class Holding {
-    private int id;
+    private Integer id;
     private String symbol;
     private String companyName;
-    private int categoryId;
+    private Integer categoryId;
     private String categoryName;
     private BigDecimal shares;
     private BigDecimal purchasePrice;
@@ -17,7 +17,7 @@ public class Holding {
     public Holding() {
     }
 
-    public Holding(int id, String symbol, String companyName, int categoryId, String categoryName,
+    public Holding(Integer id, String symbol, String companyName, Integer categoryId, String categoryName,
                    BigDecimal shares, BigDecimal purchasePrice, BigDecimal currentPrice, LocalDate purchaseDate) {
         this.id = id;
         this.symbol = symbol;
@@ -30,11 +30,11 @@ public class Holding {
         this.purchaseDate = purchaseDate;
     }
 
-    public int getId() {
+    public Integer getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(Integer id) {
         this.id = id;
     }
 
@@ -54,11 +54,11 @@ public class Holding {
         this.companyName = companyName;
     }
 
-    public int getCategoryId() {
+    public Integer getCategoryId() {
         return categoryId;
     }
 
-    public void setCategoryId(int categoryId) {
+    public void setCategoryId(Integer categoryId) {
         this.categoryId = categoryId;
     }
 

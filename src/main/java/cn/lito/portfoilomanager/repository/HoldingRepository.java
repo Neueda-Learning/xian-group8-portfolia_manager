@@ -7,6 +7,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Repository
@@ -52,6 +53,11 @@ public class HoldingRepository {
     public int deleteById(int id) {
         String sql = "delete from holdings where id=?";
         return jdbcTemplate.update(sql, id);
+    }
+
+    public int updateCurrentPriceBySymbol(String symbol, BigDecimal currentPrice) {
+        String sql = "update holdings set current_price=? where symbol=?";
+        return jdbcTemplate.update(sql, currentPrice, symbol);
     }
 
     private Holding mapRow(ResultSet rs) throws SQLException {
