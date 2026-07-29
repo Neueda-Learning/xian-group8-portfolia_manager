@@ -16,7 +16,7 @@
         </div>
         <form id="addCategoryForm">
             <div class="form-row">
-                <input type="text" id="categoryName" placeholder="Category Name (e.g. Real Estate)" required>
+                <input type="text" id="categoryName" placeholder="Category Name (e.g. Real Estate)">
                 <input type="text" id="description" placeholder="Description">
             </div>
             <button type="submit">+ Add Asset</button>
@@ -85,7 +85,7 @@
             if (e.message && (e.message.includes("HAS_HOLDINGS") || e.message.includes("cannot delete category"))) {
                 showError("error", "⚠️ Cannot delete category: This category still has holdings. Please delete all holdings in this category first.");
             } else {
-                showError("error", "Failed to delete category: " + e.message);
+                showError("error", "Failed to deltegory: " + e.message);
             }
             if (deleteBtn) deleteBtn.disabled = false;
         }
