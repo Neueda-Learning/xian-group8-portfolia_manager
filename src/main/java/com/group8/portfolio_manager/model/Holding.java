@@ -118,4 +118,14 @@ public class Holding {
         return currentPrice.subtract(purchasePrice).multiply(shares);
     }
 
+    /** Profit rate as decimal, e.g. 0.15 = 15%. */
+    public double getProfitRate() {
+        if (purchasePrice == null || purchasePrice.compareTo(BigDecimal.ZERO) == 0 || currentPrice == null) {
+            return 0.0;
+        }
+        return currentPrice.subtract(purchasePrice)
+                .divide(purchasePrice, 6, java.math.RoundingMode.HALF_UP)
+                .doubleValue();
+    }
+
 }

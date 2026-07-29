@@ -1,8 +1,11 @@
 package com.group8.portfolio_manager.controller;
 
+import com.group8.portfolio_manager.dto.HoldingTradeRequest;
 import com.group8.portfolio_manager.model.Holding;
+import com.group8.portfolio_manager.model.TradeRecordWide;
 import com.group8.portfolio_manager.service.HoldingService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -59,5 +62,23 @@ public class HoldingController {
         return service.deleteHolding(id)
                 ? "Holding deleted successfully."
                 : "Failed to delete holding.";
+    }
+
+    @PostMapping("/trade")
+    public ResponseEntity<?> tradeHolding(@RequestBody HoldingTradeRequest request) {
+        try {
+            return ResponseEntity.ok(service.tradeHolding(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Bad Request",
+                    "message", e.getMessage(),
+                    "path", "/api/holdings/trade"
+            ));
+        }
+    }
+
+    @GetMapping("/trades")
+    public List<TradeRecordWide> getRecentTrades(@RequestParam(defaultValue = "30") int limit) {
+        return service.getRecentTrades(limit);
     }
 }

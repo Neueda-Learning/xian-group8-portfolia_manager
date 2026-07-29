@@ -1,13 +1,15 @@
-package com.example.portfoilo_manager;
+package com.group8.portfolio_manager;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class PortfoiloManagerApplicationTests {
+class PortfolioManagerApplicationTests {
 
     @Test
     void contextLoads() {
     }
 
 }
+
+

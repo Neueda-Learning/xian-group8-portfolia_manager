@@ -20,7 +20,7 @@ public class AssetCategoryRepository {
     }
 
     public List<AssetCategory> findAll() {
-        String sql = "select * from asset_category order by id";
+        String sql = "select id, category_name, description from asset_category order by id";
         return jdbcTemplate.query(sql, (rs, rowNum) ->
                 new AssetCategory(
                         rs.getInt("id"),
@@ -30,7 +30,7 @@ public class AssetCategoryRepository {
     }
 
     public AssetCategory findById(Integer id) {
-        String sql = "select * from asset_category where id=?";
+        String sql = "select id, category_name, description from asset_category where id = ?";
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) ->
                 new AssetCategory(
                         rs.getInt("id"),
@@ -49,7 +49,12 @@ public class AssetCategoryRepository {
             return ps;
         }, keyHolder);
         Number key = keyHolder.getKey();
-        return key != null ? key.intValue() : -1;
+        return key == null ? -1 : key.intValue();
+    }
+
+    public int deleteById(Integer id) {
+        String sql = "delete from asset_category where id = ?";
+        return jdbcTemplate.update(sql, id);
     }
 
     public int deleteById(Integer id) {
