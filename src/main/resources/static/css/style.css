@@ -14,6 +14,49 @@
     box-sizing: border-box;
 }
 
+.trend-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.trend-arrow {
+    font-size: 12px;
+    line-height: 1;
+}
+
+.trend-arrow.positive {
+    color: var(--green);
+}
+
+.trend-arrow.negative {
+    color: var(--red);
+}
+
+.mini-bar-track {
+    width: 90px;
+    height: 8px;
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.mini-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.2s ease;
+}
+
+.mini-bar-fill.positive {
+    background: var(--green);
+}
+
+.mini-bar-fill.negative {
+    background: var(--red);
+}
+
 body {
     margin: 0;
     font-family: "Segoe UI", Arial, sans-serif;
@@ -117,6 +160,22 @@ h1 {
 .section-header h2 {
     font-size: 16px;
     margin: 0;
+}
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+@media (max-width: 800px) {
+    .two-col {
+        grid-template-columns: 1fr;
+    }
+}
+
+.two-col .section {
+    margin-bottom: 0;
 }
 
 .header-actions {

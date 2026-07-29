@@ -47,6 +47,11 @@ public class PriceHistoryRepository {
      * holding's symbol, at each common timestamp. Skips timestamps where any held
      * symbol has no valid (non-null) close price, so the resulting curve is always complete.
      *
+     * Note: only holdings that actually have price_history data are considered here.
+     * Holdings with no price_history rows at all (e.g. Bond/Cash/Crypto/ETF/Real Estate
+     * seed data added later, which the price API never covers) are intentionally excluded
+     * from this curve rather than causing every timestamp to be dropped.
+     *
      * Returns an ordered map of timestamp -> total portfolio value.
      */
     public Map<Timestamp, BigDecimal> computePortfolioValueCurve() {
@@ -58,7 +63,11 @@ public class PriceHistoryRepository {
                 join holdings h on h.symbol = ph.symbol
                 where ph.close_price is not null
                 group by ph.price_time
-                having symbols_priced = (select count(distinct symbol) from holdings)
+                having symbols_priced = (
+                    select count(distinct h2.symbol)
+                    from holdings h2
+                    join price_history ph2 on ph2.symbol = h2.symbol
+                )
                 order by ph.price_time
                 """;
 

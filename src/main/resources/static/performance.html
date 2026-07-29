@@ -39,6 +39,32 @@
             </div>
         </div>
     </div>
+
+    <div class="section">
+        <div class="section-header">
+            <h2>Net Asset Return Fluctuations</h2>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Company</th>
+                    <th>Category</th>
+                    <th>Shares</th>
+                    <th>Purchase Price</th>
+                    <th>Current Price</th>
+                    <th>Market Value</th>
+                    <th>P/L</th>
+                    <th>Return</th>
+                    <th>Trend</th>
+                </tr>
+                </thead>
+                <tbody id="returnFluctuationBody"></tbody>
+            </table>
+        </div>
+        <div id="returnFluctuationEmpty" class="empty-state" style="display:none;">No holdings yet.</div>
+    </div>
 </main>
 
 <script src="js/navbar.js"></script>
@@ -47,30 +73,14 @@
     renderNavbar("performance");
 
     let chartInstance = null;
-    let fullCurve = [];
 
-    function filterByRange(curve, range) {
-        if (!curve.length) return curve;
-        const latest = new Date(curve[curve.length - 1].time);
-        const cutoff = new Date(latest);
-        switch ((range || "MAX").toUpperCase()) {
-            case "1M": cutoff.setMonth(cutoff.getMonth() - 1); break;
-            case "3M": cutoff.setMonth(cutoff.getMonth() - 3); break;
-            case "6M": cutoff.setMonth(cutoff.getMonth() - 6); break;
-            case "1Y": cutoff.setFullYear(cutoff.getFullYear() - 1); break;
-            default: return curve; // MAX
-        }
-        const filtered = curve.filter(p => new Date(p.time) >= cutoff);
-        return filtered.length ? filtered : curve;
-    }
-
-    function formatLabel(isoTime) {
-        const d = new Date(isoTime);
-        return d.toLocaleString("en-US", { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    function formatLabel(isoDate) {
+        const d = new Date(isoDate);
+        return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" });
     }
 
     function renderChart(points) {
-        const labels = points.map(p => formatLabel(p.time));
+        const labels = points.map(p => formatLabel(p.recordDate));
         const values = points.map(p => p.portfolioValue);
 
         if (chartInstance) {
@@ -114,10 +124,8 @@
 
     async function loadPerformance(range) {
         try {
-            if (!fullCurve.length) {
-                fullCurve = await Api.getPerformanceCurve();
-            }
-            renderChart(filterByRange(fullCurve, range));
+            const points = await Api.getPerformance(range === "MAX" ? undefined : range);
+            renderChart(points);
         } catch (e) {
             showError("error", "Failed to load performance history: " + e.message);
         }
@@ -136,6 +144,59 @@
         }
     }
 
+    /**
+     * Renders a per-asset table of net return fluctuations (gain and loss side by
+     * side), sorted from biggest gainer to biggest loser, so both positive and
+     * negative movements are visible at a glance.
+     */
+    async function loadReturnFluctuations() {
+        try {
+            const holdings = await Api.getHoldings();
+            const body = document.getElementById("returnFluctuationBody");
+            const empty = document.getElementById("returnFluctuationEmpty");
+            if (!holdings.length) {
+                body.innerHTML = "";
+                empty.style.display = "block";
+                return;
+            }
+
+            empty.style.display = "none";
+            const sorted = [...holdings].sort((a, b) => Number(b.profitRate ?? 0) - Number(a.profitRate ?? 0));
+            const maxAbsRate = Math.max(0.0001, ...sorted.map(h => Math.abs(Number(h.profitRate ?? 0))));
+            body.innerHTML = sorted.map(h => {
+                const pl = Number(h.profitLoss ?? 0);
+                const rate = Number(h.profitRate ?? 0);
+                const cls = pl >= 0 ? "value positive" : "value negative";
+                const barCls = pl >= 0 ? "positive" : "negative";
+                const sign = pl >= 0 ? "+" : "";
+                const barWidth = Math.max(4, Math.round((Math.abs(rate) / maxAbsRate) * 100));
+                return `
+                    <tr>
+                        <td>${h.symbol}</td>
+                        <td>${h.companyName}</td>
+                        <td>${h.categoryName ?? ""}</td>
+                        <td>${h.shares}</td>
+                        <td>${formatCurrency(h.purchasePrice)}</td>
+                        <td>${formatCurrency(h.currentPrice)}</td>
+                        <td>${formatCurrency(h.marketValue)}</td>
+                        <td class="${cls}">${sign}${formatCurrency(pl)}</td>
+                        <td class="${cls}">${formatPercent(rate)}</td>
+                        <td>
+                            <div class="trend-cell">
+                                <span class="trend-arrow ${barCls}">${pl >= 0 ? "▲" : "▼"}</span>
+                                <div class="mini-bar-track">
+                                    <div class="mini-bar-fill ${barCls}" style="width:${barWidth}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        } catch (e) {
+            showError("error", "Failed to load return fluctuations: " + e.message);
+        }
+    }
+
     document.getElementById("rangeSelector").addEventListener("click", (event) => {
         const btn = event.target.closest("button[data-range]");
         if (!btn) return;
@@ -146,6 +207,7 @@
 
     loadPerformance("MAX");
     loadRanking();
+    loadReturnFluctuations();
 </script>
 </body>
 </html>

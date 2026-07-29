@@ -54,6 +54,12 @@ public class TradeRecordWideRepository {
         return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), limit);
     }
 
+    /** All trades ordered chronologically (oldest first), used to replay share-count history per symbol. */
+    public List<TradeRecordWide> findAllOrderedByDate() {
+        String sql = "select * from trade_record_wide order by trade_date asc, id asc";
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs));
+    }
+
     private TradeRecordWide mapRow(ResultSet rs) throws SQLException {
         TradeRecordWide trade = new TradeRecordWide();
         trade.setId(rs.getLong("id"));
