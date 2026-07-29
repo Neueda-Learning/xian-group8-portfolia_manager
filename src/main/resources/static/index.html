@@ -125,14 +125,16 @@
                 document.getElementById("holdingsEmpty").style.display = "block";
                 return;
             }
+            const CASH_SYMBOL = "USD_CASH";
             body.innerHTML = holdings.slice(0, 5).map(h => {
+                const isCash = (h.symbol || "").toUpperCase() === CASH_SYMBOL;
                 const value = h.shares * h.currentPrice;
                 const pl = (h.currentPrice - h.purchasePrice) * h.shares;
                 return `
                     <tr>
                         <td>${h.symbol}</td>
                         <td>${h.companyName}</td>
-                        <td>${h.shares}</td>
+                        <td>${isCash ? (Number(h.shares || 0) / 100).toFixed(2) : h.shares}</td>
                         <td>${formatCurrency(h.currentPrice)}</td>
                         <td>${formatCurrency(value)}</td>
                         <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(pl)}</td>

@@ -117,9 +117,9 @@ CREATE TABLE trade_record_wide (
                                    trade_type_name VARCHAR(50) NOT NULL COMMENT 'Trade type display name',
 
     -- Trade core fields
-                                   trade_shares DECIMAL(18,4) NOT NULL COMMENT 'Traded shares/units, positive number',
-                                   buy_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Buy unit price, used when trade_type_code=BUY/DEPOSIT',
-                                   sell_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Sell unit price, used when trade_type_code=SELL/WITHDRAW',
+                                   trade_shares DECIMAL(18,4) NOT NULL COMMENT 'Traded shares/units; for USD_CASH, unit is cent (0.01 USD)',
+                                   buy_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Buy unit price; for USD_CASH BUY/DEPOSIT use 0.01',
+                                   sell_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Sell unit price; for USD_CASH SELL/WITHDRAW use 0.01',
                                    trade_amount DECIMAL(18,2) NOT NULL COMMENT 'Trade amount = shares * unit price',
                                    fee DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT 'Transaction fee',
                                    currency VARCHAR(10) NOT NULL DEFAULT 'USD' COMMENT 'Currency code',
@@ -168,14 +168,14 @@ VALUES
  'SELL', 'Sell', 0.0500, NULL, 32000.00,
  1600.00, 5.00, 'USD', 'USD_CASH', 1595.00, '2024-07-01', 'Take BTC profit'),
 
--- Cash DEPOSIT: no other asset change
+-- Cash DEPOSIT: no other asset change (cash unit = 0.01 USD, shares are in cents)
 ('TRX202402200001', 'USD_CASH', 'US Dollar Cash', 'Cash', 1,
- 'DEPOSIT', 'Cash Deposit', 2000.0000, 1.00, NULL,
+ 'DEPOSIT', 'Cash Deposit', 200000.0000, 0.01, NULL,
  2000.00, 0.00, 'USD', 'USD_CASH', 2000.00, '2024-02-20', 'Monthly deposit'),
 
--- Cash WITHDRAW: no other asset change
+-- Cash WITHDRAW: no other asset change (cash unit = 0.01 USD, shares are in cents)
 ('TRX202405100001', 'USD_CASH', 'US Dollar Cash', 'Cash', 1,
- 'WITHDRAW', 'Cash Withdraw', 500.0000, NULL, 1.00,
+ 'WITHDRAW', 'Cash Withdraw', 50000.0000, NULL, 0.01,
  500.00, 0.00, 'USD', 'USD_CASH', -500.00, '2024-05-10', 'Withdraw for expense');
 
 -- quick check

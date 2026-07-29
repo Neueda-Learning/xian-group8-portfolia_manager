@@ -160,7 +160,11 @@
         document.getElementById("modalSymbol").value = holding.symbol || "";
         document.getElementById("modalTradeType").value = tradeTypeCode;
         document.getElementById("modalTradeShares").value = "";
-        document.getElementById("modalTradePrice").value = String((holding.symbol || "").toUpperCase() === CASH_SYMBOL ? 1 : Number(holding.currentPrice || 1));
+        // For cash, price is always 0.01; for non-cash, use current price
+        const isCash = (holding.symbol || "").toUpperCase() === CASH_SYMBOL;
+        // Update placeholder for cash vs non-cash
+        document.getElementById("modalTradeShares").placeholder = isCash ? "Amount (USD)" : "Shares";
+        document.getElementById("modalTradePrice").value = String(isCash ? 0.01 : Number(holding.currentPrice || 1));
         document.getElementById("modalTradeFee").value = "0";
         document.getElementById("modalTradeDate").valueAsDate = new Date();
         document.getElementById("tradePanelError").style.display = "none";
@@ -214,14 +218,17 @@
 
         empty.style.display = "none";
         body.innerHTML = holdings.map(h => {
-            const value = h.shares * h.currentPrice;
+            const isCash = (h.symbol || "").toUpperCase() === CASH_SYMBOL;
+            // For cash: shares is in cents, display as USD; for others: display as-is
+            const displayShares = isCash ? (Number(h.shares || 0)).toFixed(2) : h.shares;
+            const value = isCash ? h.shares : h.shares * h.currentPrice;
             const pl = (h.currentPrice - h.purchasePrice) * h.shares;
             return `
                 <tr>
                     <td>${h.symbol}</td>
                     <td>${h.companyName}</td>
                     <td>${h.categoryName ?? ""}</td>
-                    <td>${h.shares}</td>
+                    <td>${displayShares}</td>
                     <td>${formatCurrency(h.currentPrice)}</td>
                     <td>${formatCurrency(value)}</td>
                     <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(pl)}</td>
@@ -262,6 +269,9 @@
 
             empty.style.display = "none";
             body.innerHTML = trades.map(t => {
+                const isCash = (t.assetSymbol || "").toUpperCase() === CASH_SYMBOL;
+                // For cash: tradeShares is in cents, display as USD; for others: display as-is
+                const displayShares = isCash ? (Number(t.tradeShares || 0) / 100).toFixed(2) : formatNumber(t.tradeShares);
                 const unitPrice = t.buyPrice ?? t.sellPrice ?? 0;
                 const cashClass = Number(t.cashChange) >= 0 ? "value positive" : "value negative";
                 return `
@@ -269,7 +279,7 @@
                         <td>${t.tradeDate ?? ""}</td>
                         <td>${t.assetSymbol ?? ""}</td>
                         <td>${t.tradeTypeCode ?? ""}</td>
-                        <td>${formatNumber(t.tradeShares)}</td>
+                        <td>${displayShares}</td>
                         <td>${formatCurrency(unitPrice)}</td>
                         <td>${formatCurrency(t.tradeAmount)}</td>
                         <td class="${cashClass}">${formatCurrency(t.cashChange)}</td>

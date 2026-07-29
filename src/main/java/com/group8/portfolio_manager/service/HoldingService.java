@@ -31,6 +31,8 @@ public class HoldingService {
     private static final String CASH_ASSET_NAME = "US Dollar Cash";
     private static final String CASH_CATEGORY_NAME = "Cash";
     private static final int CASH_CATEGORY_ID = 3;
+    private static final BigDecimal CASH_UNIT_PRICE = new BigDecimal("0.01");
+    private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
 
     private final HoldingRepository repository;
     private final TradeRecordWideRepository tradeRecordWideRepository;
@@ -96,10 +98,21 @@ public class HoldingService {
         String symbol = request.getAssetSymbol().trim().toUpperCase(Locale.ROOT);
         String tradeType = request.getTradeTypeCode().trim().toUpperCase(Locale.ROOT);
         BigDecimal tradeShares = request.getTradeShares();
-        BigDecimal tradePrice = request.getTradePrice() == null ? BigDecimal.ONE : request.getTradePrice();
+        BigDecimal tradePrice = request.getTradePrice();
+        BigDecimal actualTradeShares = tradeShares; // Original value for non-cash, will be adjusted for cash
+
+        // For cash asset, fix price at 0.01 and convert amount to cent units
+        if (CASH_SYMBOL.equals(symbol)) {
+            tradePrice = CASH_UNIT_PRICE;
+            // Convert USD amount to cent units: tradeShares should be USD amount, convert to cents
+            actualTradeShares = tradeShares.multiply(CENT_FACTOR);
+        } else {
+            tradePrice = tradePrice == null ? BigDecimal.ONE : tradePrice;
+        }
+
         BigDecimal fee = request.getFee() == null ? BigDecimal.ZERO : request.getFee();
         LocalDate tradeDate = request.getTradeDate() == null ? LocalDate.now() : request.getTradeDate();
-        BigDecimal tradeAmount = tradeShares.multiply(tradePrice);
+        BigDecimal tradeAmount = actualTradeShares.multiply(tradePrice);
 
         Holding cashHolding = ensureCashHolding();
         BigDecimal cashChange;
@@ -118,19 +131,20 @@ public class HoldingService {
             if (assetHolding == null) {
                 throw new IllegalArgumentException("asset symbol not found: " + symbol);
             }
-            cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, tradeShares, tradePrice, tradeAmount, fee);
+            cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, actualTradeShares, tradePrice, tradeAmount, fee);
         }
 
         TradeRecordWide tradeRecord = buildTradeRecord(
-                request,
                 symbol,
                 tradeType,
                 tradeDate,
+                actualTradeShares,
                 tradeAmount,
                 cashChange,
                 assetHolding,
                 tradePrice,
-                fee
+                fee,
+                request.getNote()
         );
         long id = tradeRecordWideRepository.save(tradeRecord);
         tradeRecord.setId(id);
@@ -354,7 +368,7 @@ public class HoldingService {
 
         BigDecimal cashChange = tradeAmount.subtract(fee);
         cashHolding.setShares(oldCash.add(cashChange));
-        repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), BigDecimal.ONE);
+        repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), CASH_UNIT_PRICE);
         return cashChange;
     }
 
@@ -369,35 +383,36 @@ public class HoldingService {
         newCash.setCompanyName(CASH_ASSET_NAME);
         newCash.setCategoryId(CASH_CATEGORY_ID);
         newCash.setShares(BigDecimal.ZERO);
-        newCash.setPurchasePrice(BigDecimal.ONE);
-        newCash.setCurrentPrice(BigDecimal.ONE);
+        newCash.setPurchasePrice(CASH_UNIT_PRICE);
+        newCash.setCurrentPrice(CASH_UNIT_PRICE);
         newCash.setPurchaseDate(LocalDate.now());
         int id = repository.save(newCash);
         return repository.findById(id);
     }
 
-    private TradeRecordWide buildTradeRecord(HoldingTradeRequest request,
-                                             String symbol,
+    private TradeRecordWide buildTradeRecord(String symbol,
                                              String tradeType,
                                              LocalDate tradeDate,
+                                             BigDecimal tradeShares,
                                              BigDecimal tradeAmount,
                                              BigDecimal cashChange,
                                              Holding assetHolding,
                                              BigDecimal tradePrice,
-                                             BigDecimal fee) {
+                                             BigDecimal fee,
+                                             String note) {
         TradeRecordWide trade = new TradeRecordWide();
         trade.setTradeNo(createTradeNo(tradeDate));
         trade.setAssetSymbol(symbol);
         trade.setTradeTypeCode(tradeType);
         trade.setTradeTypeName(toTradeTypeName(tradeType));
-        trade.setTradeShares(request.getTradeShares());
+        trade.setTradeShares(tradeShares);
         trade.setTradeAmount(tradeAmount.setScale(2, RoundingMode.HALF_UP));
         trade.setFee(fee.setScale(2, RoundingMode.HALF_UP));
         trade.setCurrency("USD");
         trade.setCashAssetSymbol(CASH_SYMBOL);
         trade.setCashChange(cashChange.setScale(2, RoundingMode.HALF_UP));
         trade.setTradeDate(tradeDate);
-        trade.setNote(request.getNote());
+        trade.setNote(note);
 
         if ("BUY".equals(tradeType) || "DEPOSIT".equals(tradeType)) {
             trade.setBuyPrice(tradePrice);
