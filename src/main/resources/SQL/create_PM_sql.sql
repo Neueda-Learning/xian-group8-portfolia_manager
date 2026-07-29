@@ -182,3 +182,12 @@ VALUES
 SELECT * FROM trade_record_wide ORDER BY trade_date, id;
 
 
+ALTER TABLE holdings
+    MODIFY purchase_price DECIMAL(18,6) NOT NULL,
+    MODIFY current_price DECIMAL(18,6) NOT NULL;
+
+ALTER TABLE trade_record_wide
+    MODIFY buy_price DECIMAL(18,6) NULL,
+    MODIFY sell_price DECIMAL(18,6) NULL;
+
+

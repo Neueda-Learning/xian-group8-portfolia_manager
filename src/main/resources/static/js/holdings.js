@@ -22,6 +22,11 @@ function todayIsoDate() {
     return `${year}-${month}-${day}`;
 }
 
+function formatPrice(value) {
+    const num = Number(value ?? 0);
+    return num.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 });
+}
+
 function getSelectedSymbolForAdd() {
     const categoryId = Number(el("categoryId").value || 0);
     if (categoryId === CASH_CATEGORY_ID) {
@@ -167,8 +172,8 @@ function renderHoldingsTable(holdings) {
                 <td>${h.companyName || ""}</td>
                 <td>${h.categoryName || ""}</td>
                 <td>${h.displayShares ?? ""}</td>
-                <td>${formatCurrency(h.purchasePrice)}</td>
-                <td>${formatCurrency(h.currentPrice)}</td>
+                <td>${formatPrice(h.purchasePrice)}</td>
+                <td>${formatPrice(h.currentPrice)}</td>
                 <td>${formatCurrency(h.marketValue)}</td>
                 <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(h.profitLoss)}</td>
                 <td class="action-cell">
@@ -196,7 +201,7 @@ function renderTradesTable(trades) {
                 <td>${t.assetSymbol || ""}</td>
                 <td>${t.tradeTypeCode || ""}</td>
                 <td>${t.displayShares ?? ""}</td>
-                <td>${formatCurrency(t.unitPrice)}</td>
+                <td>${formatPrice(t.unitPrice)}</td>
                 <td>${formatCurrency(t.tradeAmount)}</td>
                 <td class="${cashClass}">${formatCurrency(t.cashChange)}</td>
                 <td>${t.note || ""}</td>
