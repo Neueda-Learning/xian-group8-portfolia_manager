@@ -11,6 +11,24 @@ public class HoldingTradeRequest {
     private LocalDate tradeDate;
     private BigDecimal fee;
     private String note;
+    private Integer categoryId;
+    private Integer holdingId;
+
+    public Integer getHoldingId() {
+        return holdingId;
+    }
+
+    public void setHoldingId(Integer holdingId) {
+        this.holdingId = holdingId;
+    }
+
+    public Integer getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Integer categoryId) {
+        this.categoryId = categoryId;
+    }
 
     public String getAssetSymbol() {
         return assetSymbol;

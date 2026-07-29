@@ -4,8 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class Holding {
-    private static final String CASH_SYMBOL = "USD_CASH";
-    private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
+    private static final Integer CASH_CATEGORY_ID = 3;
 
     private Integer id;
     private String symbol;
@@ -135,14 +134,11 @@ public class Holding {
         if (shares == null) {
             return BigDecimal.ZERO;
         }
-        if (CASH_SYMBOL.equalsIgnoreCase(symbol)) {
-            return shares.divide(CENT_FACTOR, 2, java.math.RoundingMode.HALF_UP);
-        }
         return shares;
     }
 
     public boolean getCashAsset() {
-        return CASH_SYMBOL.equalsIgnoreCase(symbol);
+        return CASH_CATEGORY_ID.equals(categoryId);
     }
 
 }

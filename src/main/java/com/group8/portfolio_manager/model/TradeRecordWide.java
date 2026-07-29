@@ -5,8 +5,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class TradeRecordWide {
-    private static final String CASH_SYMBOL = "USD_CASH";
-    private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
 
     private Long id;
     private String tradeNo;
@@ -27,6 +25,15 @@ public class TradeRecordWide {
     private LocalDate tradeDate;
     private String note;
     private LocalDateTime createdAt;
+    private Integer categoryId;
+
+    public Integer getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Integer categoryId) {
+        this.categoryId = categoryId;
+    }
 
     public Long getId() {
         return id;
@@ -184,9 +191,6 @@ public class TradeRecordWide {
         if (tradeShares == null) {
             return BigDecimal.ZERO;
         }
-        if (CASH_SYMBOL.equalsIgnoreCase(assetSymbol)) {
-            return tradeShares.divide(CENT_FACTOR, 2, java.math.RoundingMode.HALF_UP);
-        }
         return tradeShares;
     }
 
@@ -200,4 +204,3 @@ public class TradeRecordWide {
         return BigDecimal.ZERO;
     }
 }
-

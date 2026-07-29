@@ -7,6 +7,7 @@ import com.group8.portfolio_manager.repository.HoldingRepository;
 import com.group8.portfolio_manager.repository.TradeRecordWideRepository;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,21 +28,33 @@ import java.util.regex.Pattern;
 @Service
 public class HoldingService {
     private static final String SAMPLE_PRICE_API = "https://c4rm9elh30.execute-api.us-east-1.amazonaws.com/default/cachedPriceData?ticker=";
+    private static final String FX_RATE_API_LATEST = "https://api.frankfurter.dev/v1/latest?from=%s&to=USD";
+    private static final String FX_RATE_API_BY_DATE = "https://api.frankfurter.dev/v1/%s?from=%s&to=USD";
     private static final Set<String> SUPPORTED_TICKERS = Set.of("C", "AMZN", "TSLA", "FB", "AAPL");
-    private static final Map<String, String> DEFAULT_COMPANY_NAMES = Map.of(
-            "C", "Citigroup Inc",
-            "AMZN", "Amazon.com Inc",
-            "TSLA", "Tesla Inc",
-            "FB", "Meta Platforms Inc",
-            "AAPL", "Apple Inc",
-            "USD_CASH", "US Dollar Cash"
+    private static final Set<String> SUPPORTED_CASH_SYMBOLS = Set.of(
+            "USD_CASH", "CNY_CASH", "EUR_CASH", "INR_CASH", "GBP_CASH", "JPY_CASH", "KRW_CASH"
+    );
+    private static final Map<String, String> DEFAULT_COMPANY_NAMES = Map.ofEntries(
+            Map.entry("C", "Citigroup Inc"),
+            Map.entry("AMZN", "Amazon.com Inc"),
+            Map.entry("TSLA", "Tesla Inc"),
+            Map.entry("FB", "Meta Platforms Inc"),
+            Map.entry("AAPL", "Apple Inc"),
+            Map.entry("USD_CASH", "US Dollar Cash"),
+            Map.entry("CNY_CASH", "Chinese Yuan Cash"),
+            Map.entry("EUR_CASH", "Euro Cash"),
+            Map.entry("INR_CASH", "Indian Rupee Cash"),
+            Map.entry("GBP_CASH", "British Pound Cash"),
+            Map.entry("JPY_CASH", "Japanese Yen Cash"),
+            Map.entry("KRW_CASH", "Korean Won Cash")
     );
     private static final String CASH_SYMBOL = "USD_CASH";
     private static final String CASH_ASSET_NAME = "US Dollar Cash";
     private static final String CASH_CATEGORY_NAME = "Cash";
+    private static final int STOCK_CATEGORY_ID = 1;
     private static final int CASH_CATEGORY_ID = 3;
-    private static final BigDecimal CASH_UNIT_PRICE = new BigDecimal("0.01");
-    private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
+    private static final BigDecimal CASH_UNIT_PRICE = BigDecimal.ONE;
+    private static final BigDecimal SHARE_ZERO_TOLERANCE = new BigDecimal("0.00000001");
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("^[A-Z0-9_.-]{1,30}$");
 
     private final HoldingRepository repository;
@@ -92,6 +105,11 @@ public class HoldingService {
         if (holding.getShares().compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("shares must be >= 0");
         }
+        if (!(holding.getCategoryId() == CASH_CATEGORY_ID)) {
+            if (holding.getShares().stripTrailingZeros().scale() > 0) {
+                throw new IllegalArgumentException("shares must be a whole number for non-cash assets");
+            }
+        }
         if (holding.getPurchasePrice() == null) {
             throw new IllegalArgumentException("purchasePrice is required");
         }
@@ -102,7 +120,12 @@ public class HoldingService {
             throw new IllegalArgumentException("purchaseDate is required");
         }
 
+        Integer categoryId = holding.getCategoryId();
+        boolean cashCategory = isCashCategory(categoryId);
         String symbol = holding.getSymbol().trim().toUpperCase(Locale.ROOT);
+        if (cashCategory) {
+            symbol = normalizeCashSymbol(symbol);
+        }
         holding.setSymbol(symbol);
         validateSymbolFormat(symbol, "symbol");
 
@@ -110,19 +133,19 @@ public class HoldingService {
             throw new IllegalArgumentException("purchaseDate cannot be in the future");
         }
 
-        String companyName = holding.getCompanyName();
-        if (companyName == null || companyName.isBlank()) {
-            holding.setCompanyName(DEFAULT_COMPANY_NAMES.getOrDefault(symbol, symbol));
-        } else if (companyName.length() > 100) {
-            throw new IllegalArgumentException("companyName length must be <= 100");
-        }
-
-        if (CASH_SYMBOL.equals(symbol)) {
-            // Cash shares are stored in cent units; input amount is treated as USD.
-            holding.setShares(holding.getShares().multiply(CENT_FACTOR));
-            holding.setCurrentPrice(CASH_UNIT_PRICE);
-            holding.setPurchasePrice(CASH_UNIT_PRICE);
-        } else {
+        if (cashCategory) {
+            try {
+                BigDecimal latestFxUsdRate = fetchCashUsdRate(symbol, null);
+                BigDecimal purchaseDateFxUsdRate = fetchCashUsdRate(symbol, holding.getPurchaseDate());
+                holding.setCurrentPrice(latestFxUsdRate);
+                holding.setPurchasePrice(purchaseDateFxUsdRate);
+            } catch (IOException e) {
+                throw new IllegalStateException("failed to fetch FX rate from market API", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while fetching FX rate from market API", e);
+            }
+        } else if (isStockCategory(categoryId)) {
             if (SUPPORTED_TICKERS.contains(symbol)) {
                 try {
                     holding.setCurrentPrice(fetchLatestClosePrice(symbol));
@@ -137,6 +160,20 @@ public class HoldingService {
                     throw new IllegalArgumentException("currentPrice is required for unsupported ticker: " + symbol);
                 }
             }
+        }
+
+        String companyName = holding.getCompanyName();
+        if (companyName == null || companyName.isBlank()) {
+            holding.setCompanyName(DEFAULT_COMPANY_NAMES.getOrDefault(symbol, symbol));
+        } else if (companyName.length() > 100) {
+            throw new IllegalArgumentException("companyName length must be <= 100");
+        }
+
+        Holding existing = repository.findBySymbol(symbol);
+        if (existing != null
+                && Objects.equals(existing.getCategoryId(), categoryId)
+                && (cashCategory || isStockCategory(categoryId))) {
+            return mergeHoldingOnAdd(existing, holding);
         }
 
         int id = repository.save(holding);
@@ -161,61 +198,61 @@ public class HoldingService {
             throw new IllegalArgumentException("tradeShares must be > 0");
         }
         BigDecimal tradePrice = request.getTradePrice();
-        BigDecimal actualTradeShares = tradeShares; // Original value for non-cash, will be adjusted for cash
-
-        // For cash asset, fix price at 0.01 and convert amount to cent units
-        if (CASH_SYMBOL.equals(symbol)) {
-            tradePrice = CASH_UNIT_PRICE;
-            // Convert USD amount to cent units: tradeShares should be USD amount, convert to cents
-            actualTradeShares = tradeShares.multiply(CENT_FACTOR);
-        } else {
-            tradePrice = tradePrice == null ? BigDecimal.ONE : tradePrice;
-        }
-
         BigDecimal fee = request.getFee() == null ? BigDecimal.ZERO : request.getFee();
         LocalDate tradeDate = request.getTradeDate() == null ? LocalDate.now() : request.getTradeDate();
         if (tradeDate.isAfter(LocalDate.now())) {
             throw new IllegalArgumentException("tradeDate cannot be in the future");
         }
-        BigDecimal tradeAmount = actualTradeShares.multiply(tradePrice);
+        Holding tradeHolding = findHoldingForTrade(request, symbol);
+        symbol = tradeHolding.getSymbol().trim().toUpperCase(Locale.ROOT);
+        boolean isCashTrade = isCashCategory(tradeHolding.getCategoryId());
 
-        Holding cashHolding = ensureCashHolding();
+        Holding usdCashHolding = ensureUsdCashHolding();
         BigDecimal cashChange;
-        Holding assetHolding = null;
+        Holding assetHoldingForRecord = null;
+        BigDecimal tradeAmount;
 
-        if (CASH_SYMBOL.equals(symbol)) {
+        if (isCashTrade) {
             if (!"DEPOSIT".equals(tradeType) && !"WITHDRAW".equals(tradeType)) {
                 throw new IllegalArgumentException("cash only supports DEPOSIT or WITHDRAW");
             }
-            cashChange = applyCashOnlyTrade(cashHolding, tradeType, tradeAmount, fee, tradePrice, tradeDate);
+            try {
+                tradePrice = fetchCashUsdRate(symbol, tradeDate);
+            } catch (IOException e) {
+                throw new IllegalStateException("failed to fetch FX rate from market API", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("interrupted while fetching FX rate from market API", e);
+            }
+            tradeAmount = tradeShares.multiply(tradePrice);
+            if (CASH_SYMBOL.equals(symbol)) {
+                cashChange = applyUsdCashTrade(tradeHolding, tradeType, tradeAmount, fee);
+            } else {
+                cashChange = applyNonUsdCashTrade(tradeHolding, usdCashHolding, tradeType, tradeShares, tradePrice, tradeAmount, fee);
+            }
         } else {
             if (!"BUY".equals(tradeType) && !"SELL".equals(tradeType)) {
                 throw new IllegalArgumentException("non-cash assets only support BUY or SELL");
             }
-            assetHolding = repository.findBySymbol(symbol);
-            if (assetHolding == null) {
-                throw new IllegalArgumentException("asset symbol not found: " + symbol);
-            }
-
             if (tradePrice == null) {
-                tradePrice = assetHolding.getCurrentPrice();
+                tradePrice = tradeHolding.getCurrentPrice();
                 if (tradePrice == null || tradePrice.compareTo(BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("tradePrice is required when current price is unavailable");
                 }
-                tradeAmount = actualTradeShares.multiply(tradePrice);
             }
-
-            cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, actualTradeShares, tradePrice, tradeAmount, fee, tradeDate);
+            tradeAmount = tradeShares.multiply(tradePrice);
+            cashChange = applyAssetTrade(tradeHolding, usdCashHolding, tradeType, tradeShares, tradePrice, tradeAmount, fee, tradeDate);
+            assetHoldingForRecord = tradeHolding;
         }
 
         TradeRecordWide tradeRecord = buildTradeRecord(
                 symbol,
                 tradeType,
                 tradeDate,
-                actualTradeShares,
+                tradeShares,
                 tradeAmount,
                 cashChange,
-                assetHolding,
+                assetHoldingForRecord,
                 tradePrice,
                 fee,
                 request.getNote()
@@ -231,10 +268,17 @@ public class HoldingService {
     }
 
     public Map<String, Object> refreshCurrentPrices() {
-        Set<String> symbols = new TreeSet<>();
-        for (Holding holding : repository.findAll()) {
-            if (holding.getSymbol() != null && !holding.getSymbol().isBlank()) {
-                symbols.add(holding.getSymbol().trim().toUpperCase(Locale.ROOT));
+        List<Holding> holdings = repository.findAll();
+        List<String> requestedSymbols = new ArrayList<>();
+        Map<String, Integer> symbolCategoryMap = new LinkedHashMap<>();
+        for (Holding holding : holdings) {
+            if (holding.getSymbol() == null || holding.getSymbol().isBlank()) {
+                continue;
+            }
+            String normalizedSymbol = holding.getSymbol().trim().toUpperCase(Locale.ROOT);
+            if (!symbolCategoryMap.containsKey(normalizedSymbol)) {
+                requestedSymbols.add(normalizedSymbol);
+                symbolCategoryMap.put(normalizedSymbol, holding.getCategoryId());
             }
         }
 
@@ -242,14 +286,18 @@ public class HoldingService {
         List<String> failed = new ArrayList<>();
         int updatedRows = 0;
 
-        for (String symbol : symbols) {
-            if (!SUPPORTED_TICKERS.contains(symbol)) {
-                skipped.add(symbol);
-                continue;
-            }
+        for (Map.Entry<String, Integer> entry : symbolCategoryMap.entrySet()) {
+            String symbol = entry.getKey();
             try {
-                BigDecimal latestPrice = fetchLatestClosePrice(symbol);
-                updatedRows += repository.updateCurrentPriceBySymbol(symbol, latestPrice);
+                if (isCashCategory(entry.getValue())) {
+                    BigDecimal fxRate = fetchCashUsdRate(symbol);
+                    updatedRows += repository.updateCurrentPriceBySymbol(symbol, fxRate);
+                } else if (SUPPORTED_TICKERS.contains(symbol)) {
+                    BigDecimal latestPrice = fetchLatestClosePrice(symbol);
+                    updatedRows += repository.updateCurrentPriceBySymbol(symbol, latestPrice);
+                } else {
+                    skipped.add(symbol);
+                }
             } catch (IOException e) {
                 failed.add(symbol + " (IO error: " + e.getMessage() + ")");
             } catch (InterruptedException e) {
@@ -264,7 +312,7 @@ public class HoldingService {
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("requestedSymbols", new ArrayList<>(symbols));
+        result.put("requestedSymbols", requestedSymbols);
         result.put("updatedRows", updatedRows);
         result.put("skippedUnsupported", skipped);
         result.put("failed", failed);
@@ -298,6 +346,17 @@ public class HoldingService {
         result.put("ticker", symbol);
         result.put("close", closeSeries);
         result.put("timestamp", timestampSeries);
+        return result;
+    }
+
+    public Map<String, Object> getCashFxRate(String symbol, LocalDate date) throws IOException, InterruptedException {
+        String normalizedSymbol = normalizeCashSymbol(symbol);
+        BigDecimal usdRate = fetchCashUsdRate(normalizedSymbol, date);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("symbol", normalizedSymbol);
+        result.put("currency", currencyFromCashSymbol(normalizedSymbol));
+        result.put("usdRate", usdRate);
+        result.put("date", date == null ? "latest" : date.toString());
         return result;
     }
 
@@ -367,6 +426,12 @@ public class HoldingService {
         if (request.getTradeTypeCode() == null || request.getTradeTypeCode().isBlank()) {
             throw new IllegalArgumentException("tradeTypeCode is required");
         }
+        if (request.getHoldingId() == null || request.getHoldingId() <= 0) {
+            throw new IllegalArgumentException("holdingId is required");
+        }
+        if (request.getCategoryId() == null) {
+            throw new IllegalArgumentException("categoryId is required");
+        }
         String normalizedTradeType = request.getTradeTypeCode().trim().toUpperCase(Locale.ROOT);
         if (!Set.of("BUY", "SELL", "DEPOSIT", "WITHDRAW").contains(normalizedTradeType)) {
             throw new IllegalArgumentException("tradeTypeCode must be one of BUY/SELL/DEPOSIT/WITHDRAW");
@@ -388,27 +453,70 @@ public class HoldingService {
         }
     }
 
-    private BigDecimal applyCashOnlyTrade(Holding cashHolding, String tradeType, BigDecimal tradeAmount, BigDecimal fee, BigDecimal tradePrice, LocalDate tradeDate) {
-        // cashHolding.shares is stored in cent units (1 share = 0.01 USD).
-        BigDecimal oldCashShares = safeValue(cashHolding.getShares());
-        BigDecimal cashChangeUsd;
-        if ("DEPOSIT".equals(tradeType)) {
-            cashChangeUsd = tradeAmount.subtract(fee);
-            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
-            cashHolding.setShares(oldCashShares.add(cashChangeShares));
+    private BigDecimal applyUsdCashTrade(Holding usdCashHolding,
+                                         String tradeType,
+                                         BigDecimal tradeAmount,
+                                         BigDecimal fee) {
+        BigDecimal oldUsdShares = safeValue(usdCashHolding.getShares());
+        BigDecimal usdChange = "DEPOSIT".equals(tradeType)
+                ? tradeAmount.subtract(fee)
+                : tradeAmount.add(fee).negate();
+        BigDecimal newUsdShares = normalizeNearZero(oldUsdShares.add(usdChange));
+        if (newUsdShares.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("cash is not enough");
+        }
+
+        usdCashHolding.setShares(newUsdShares);
+        if (isEffectivelyZeroShares(newUsdShares)) {
+            repository.deleteById(usdCashHolding.getId());
         } else {
-            cashChangeUsd = tradeAmount.add(fee).negate();
-            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
-            BigDecimal newCashShares = oldCashShares.add(cashChangeShares);
-            if (newCashShares.compareTo(BigDecimal.ZERO) < 0) {
+            repository.updateHoldingSharesAndPrice(usdCashHolding.getId(), usdCashHolding.getShares(), CASH_UNIT_PRICE);
+        }
+        return usdChange;
+    }
+
+    private BigDecimal applyNonUsdCashTrade(Holding cashHolding,
+                                            Holding usdCashHolding,
+                                            String tradeType,
+                                            BigDecimal tradeShares,
+                                            BigDecimal tradePrice,
+                                            BigDecimal tradeAmount,
+                                            BigDecimal fee) {
+        BigDecimal oldCashShares = safeValue(cashHolding.getShares());
+        BigDecimal oldUsdShares = safeValue(usdCashHolding.getShares());
+        BigDecimal usdChange;
+
+        if ("DEPOSIT".equals(tradeType)) {
+            BigDecimal usdNeed = tradeAmount.add(fee);
+            if (oldUsdShares.compareTo(usdNeed) < 0) {
+                throw new IllegalArgumentException("cash is not enough for buy trade");
+            }
+            BigDecimal newCashShares = oldCashShares.add(tradeShares);
+            BigDecimal avgCost = weightedAveragePrice(oldCashShares, cashHolding.getPurchasePrice(), tradeShares, tradePrice, newCashShares);
+            BigDecimal effectiveCurrent = safeCurrentPrice(cashHolding.getCurrentPrice(), tradePrice);
+            cashHolding.setShares(newCashShares);
+            cashHolding.setPurchasePrice(avgCost);
+            cashHolding.setCurrentPrice(effectiveCurrent);
+            repository.updateHoldingAfterTrade(cashHolding.getId(), cashHolding.getShares(), cashHolding.getPurchasePrice(), cashHolding.getCurrentPrice());
+
+            usdChange = usdNeed.negate();
+        } else {
+            if (oldCashShares.compareTo(tradeShares) < 0) {
                 throw new IllegalArgumentException("cash is not enough");
             }
+            BigDecimal newCashShares = normalizeNearZero(oldCashShares.subtract(tradeShares));
             cashHolding.setShares(newCashShares);
+            if (isEffectivelyZeroShares(newCashShares)) {
+                repository.deleteById(cashHolding.getId());
+            } else {
+                repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), cashHolding.getCurrentPrice());
+            }
+            usdChange = tradeAmount.subtract(fee);
         }
-        cashHolding.setCurrentPrice(CASH_UNIT_PRICE);
-        cashHolding.setPurchasePrice(CASH_UNIT_PRICE);
-        repository.updateHoldingAfterTrade(cashHolding.getId(), cashHolding.getShares(), cashHolding.getPurchasePrice(), cashHolding.getCurrentPrice());
-        return cashChangeUsd;
+
+        usdCashHolding.setShares(oldUsdShares.add(usdChange));
+        repository.updateHoldingSharesAndPrice(usdCashHolding.getId(), usdCashHolding.getShares(), CASH_UNIT_PRICE);
+        return usdChange;
     }
 
     private BigDecimal applyAssetTrade(Holding assetHolding,
@@ -419,22 +527,16 @@ public class HoldingService {
                                        BigDecimal tradeAmount,
                                        BigDecimal fee, LocalDate tradeDate) {
         BigDecimal oldAssetShares = safeValue(assetHolding.getShares());
-        // cashHolding.shares is stored in cent units.
         BigDecimal oldCashShares = safeValue(cashHolding.getShares());
 
         if ("BUY".equals(tradeType)) {
             BigDecimal cashNeedUsd = tradeAmount.add(fee);
-            BigDecimal cashNeedShares = cashNeedUsd.multiply(CENT_FACTOR);
-            if (oldCashShares.compareTo(cashNeedShares) < 0) {
+            if (oldCashShares.compareTo(cashNeedUsd) < 0) {
                 throw new IllegalArgumentException("cash is not enough for buy trade");
             }
 
             BigDecimal newAssetShares = oldAssetShares.add(tradeShares);
-            BigDecimal oldCostAmount = oldAssetShares.multiply(safeValue(assetHolding.getPurchasePrice()));
-            BigDecimal newCostAmount = tradeShares.multiply(tradePrice);
-            BigDecimal avgCost = oldCostAmount.add(newCostAmount)
-                    .divide(newAssetShares, 2, RoundingMode.HALF_UP);
-
+            BigDecimal avgCost = weightedAveragePrice(oldAssetShares, assetHolding.getPurchasePrice(), tradeShares, tradePrice, newAssetShares);
             assetHolding.setShares(newAssetShares);
             assetHolding.setPurchasePrice(avgCost);
             BigDecimal effectiveAssetPrice = tradeDate.equals(LocalDate.now())
@@ -444,8 +546,7 @@ public class HoldingService {
             repository.updateHoldingAfterTrade(assetHolding.getId(), assetHolding.getShares(), assetHolding.getPurchasePrice(), assetHolding.getCurrentPrice());
 
             BigDecimal cashChangeUsd = cashNeedUsd.negate();
-            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
-            cashHolding.setShares(oldCashShares.add(cashChangeShares));
+            cashHolding.setShares(oldCashShares.add(cashChangeUsd));
             BigDecimal effectiveCashPrice = tradeDate.equals(LocalDate.now())
                     ? CASH_UNIT_PRICE
                     : safeCurrentPrice(cashHolding.getCurrentPrice(), CASH_UNIT_PRICE);
@@ -457,22 +558,20 @@ public class HoldingService {
             throw new IllegalArgumentException("asset shares are not enough for sell trade");
         }
 
-        BigDecimal newAssetShares = oldAssetShares.subtract(tradeShares);
+        BigDecimal newAssetShares = normalizeNearZero(oldAssetShares.subtract(tradeShares));
         assetHolding.setShares(newAssetShares);
-        BigDecimal effectiveAssetPrice = tradeDate.equals(LocalDate.now())
-                ? tradePrice
-                : safeCurrentPrice(assetHolding.getCurrentPrice(), tradePrice);
-        assetHolding.setCurrentPrice(effectiveAssetPrice);
-        repository.updateHoldingSharesAndPrice(assetHolding.getId(), assetHolding.getShares(), assetHolding.getCurrentPrice());
-
+        if (isEffectivelyZeroShares(newAssetShares)) {
+            repository.deleteById(assetHolding.getId());
+        } else {
+            repository.updateHoldingSharesAndPrice(assetHolding.getId(), assetHolding.getShares(), assetHolding.getCurrentPrice());
+        }
         BigDecimal cashChangeUsd = tradeAmount.subtract(fee);
-        BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
-        cashHolding.setShares(oldCashShares.add(cashChangeShares));
+        cashHolding.setShares(oldCashShares.add(cashChangeUsd));
         repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), CASH_UNIT_PRICE);
         return cashChangeUsd;
     }
 
-    private Holding ensureCashHolding() {
+    private Holding ensureUsdCashHolding() {
         Holding cash = repository.findBySymbol(CASH_SYMBOL);
         if (cash != null) {
             return cash;
@@ -488,6 +587,26 @@ public class HoldingService {
         newCash.setPurchaseDate(LocalDate.now());
         int id = repository.save(newCash);
         return repository.findById(id);
+    }
+
+    private Holding findHoldingForTrade(HoldingTradeRequest request, String symbol) {
+        if (request.getHoldingId() == null) {
+            throw new IllegalArgumentException("holdingId is required");
+        }
+        Holding holding;
+        try {
+            holding = repository.findById(request.getHoldingId());
+        } catch (EmptyResultDataAccessException e) {
+            throw new IllegalArgumentException("holding not found by id: " + request.getHoldingId());
+        }
+        if (request.getCategoryId() != null && !Objects.equals(request.getCategoryId(), holding.getCategoryId())) {
+            throw new IllegalArgumentException("categoryId does not match holding");
+        }
+        String normalizedHoldingSymbol = holding.getSymbol() == null ? "" : holding.getSymbol().trim().toUpperCase(Locale.ROOT);
+        if (!normalizedHoldingSymbol.equals(symbol)) {
+            throw new IllegalArgumentException("assetSymbol does not match holding");
+        }
+        return holding;
     }
 
     private TradeRecordWide buildTradeRecord(String symbol,
@@ -522,14 +641,16 @@ public class HoldingService {
             trade.setSellPrice(tradePrice);
         }
 
-        if (CASH_SYMBOL.equals(symbol)) {
+        if (isCashSymbol(symbol)) {
             trade.setCashAsset(true);
-            trade.setAssetName(CASH_ASSET_NAME);
+            trade.setAssetName(DEFAULT_COMPANY_NAMES.getOrDefault(symbol, symbol));
             trade.setAssetCategoryName(CASH_CATEGORY_NAME);
+            trade.setCategoryId(CASH_CATEGORY_ID);
         } else {
             trade.setCashAsset(false);
             trade.setAssetName(assetHolding.getCompanyName());
             trade.setAssetCategoryName(assetHolding.getCategoryName());
+            trade.setCategoryId(assetHolding.getCategoryId());
         }
 
         return trade;
@@ -563,6 +684,103 @@ public class HoldingService {
             return fallbackPrice;
         }
         return currentPrice;
+    }
+
+    private boolean isEffectivelyZeroShares(BigDecimal shares) {
+        return safeValue(shares).abs().compareTo(SHARE_ZERO_TOLERANCE) <= 0;
+    }
+
+    private BigDecimal normalizeNearZero(BigDecimal shares) {
+        return isEffectivelyZeroShares(shares) ? BigDecimal.ZERO : shares;
+    }
+
+    private BigDecimal weightedAveragePrice(BigDecimal oldShares,
+                                            BigDecimal oldPrice,
+                                            BigDecimal addedShares,
+                                            BigDecimal addedPrice,
+                                            BigDecimal totalShares) {
+        BigDecimal safeOldShares = safeValue(oldShares);
+        BigDecimal safeOldPrice = safeValue(oldPrice);
+        BigDecimal oldCostAmount = safeOldShares.multiply(safeOldPrice);
+        BigDecimal newCostAmount = addedShares.multiply(addedPrice);
+        return oldCostAmount.add(newCostAmount).divide(totalShares, 6, RoundingMode.HALF_UP);
+    }
+
+    private Holding mergeHoldingOnAdd(Holding existing, Holding incoming) {
+        BigDecimal oldShares = safeValue(existing.getShares());
+        BigDecimal incomingShares = safeValue(incoming.getShares());
+        BigDecimal newShares = oldShares.add(incomingShares);
+        BigDecimal avgCost = weightedAveragePrice(oldShares, existing.getPurchasePrice(), incomingShares, incoming.getPurchasePrice(), newShares);
+
+        existing.setShares(newShares);
+        existing.setPurchasePrice(avgCost);
+        existing.setCurrentPrice(safeCurrentPrice(incoming.getCurrentPrice(), existing.getCurrentPrice()));
+        repository.updateHoldingAfterTrade(existing.getId(), existing.getShares(), existing.getPurchasePrice(), existing.getCurrentPrice());
+        return existing;
+    }
+
+    private boolean isCashCategory(Integer categoryId) {
+        return categoryId != null && categoryId == CASH_CATEGORY_ID;
+    }
+
+    private boolean isStockCategory(Integer categoryId) {
+        return categoryId != null && categoryId == STOCK_CATEGORY_ID;
+    }
+
+    private boolean isCashSymbol(String symbol) {
+        return symbol != null && SUPPORTED_CASH_SYMBOLS.contains(symbol.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private String normalizeCashSymbol(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            throw new IllegalArgumentException("cash symbol is required");
+        }
+        String normalized = symbol.trim().toUpperCase(Locale.ROOT);
+        if (!SUPPORTED_CASH_SYMBOLS.contains(normalized)) {
+            throw new IllegalArgumentException("unsupported cash symbol: " + normalized);
+        }
+        return normalized;
+    }
+
+    private String currencyFromCashSymbol(String cashSymbol) {
+        String normalized = normalizeCashSymbol(cashSymbol);
+        return normalized.substring(0, normalized.indexOf("_CASH"));
+    }
+
+    private BigDecimal fetchCashUsdRate(String cashSymbol) throws IOException, InterruptedException {
+        return fetchCashUsdRate(cashSymbol, null);
+    }
+
+    private BigDecimal fetchCashUsdRate(String cashSymbol, LocalDate rateDate) throws IOException, InterruptedException {
+        String normalized = normalizeCashSymbol(cashSymbol);
+        String currency = currencyFromCashSymbol(normalized);
+        if ("USD".equals(currency)) {
+            return CASH_UNIT_PRICE;
+        }
+
+        String encodedCurrency = URLEncoder.encode(currency, StandardCharsets.UTF_8);
+        String url = rateDate == null
+                ? String.format(Locale.ROOT, FX_RATE_API_LATEST, encodedCurrency)
+                : String.format(Locale.ROOT, FX_RATE_API_BY_DATE, rateDate, encodedCurrency);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("FX HTTP " + response.statusCode());
+        }
+
+        Map<String, Object> root = jsonParser.parseMap(response.body());
+        Object ratesObj = root.get("rates");
+        if (!(ratesObj instanceof Map<?, ?> ratesMap)) {
+            throw new IllegalStateException("missing rates");
+        }
+        Object usdObj = ratesMap.get("USD");
+        if (usdObj == null) {
+            throw new IllegalStateException("missing USD rate");
+        }
+        return new BigDecimal(String.valueOf(usdObj));
     }
 
     private void validateSymbolFormat(String symbol, String fieldName) {

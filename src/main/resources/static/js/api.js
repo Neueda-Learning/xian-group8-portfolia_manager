@@ -52,6 +52,13 @@ const Api = (() => {
         addHolding: (holding) => request("/api/holdings", { method: "POST", body: JSON.stringify(holding) }),
         refreshHoldingPrices: () => request("/api/holdings/refresh-prices", { method: "POST" }),
         getPriceSeries: (ticker) => request(`/api/holdings/price-series?ticker=${encodeURIComponent(ticker)}`),
+        getFxRate: (symbol, date = "") => {
+            const query = [`symbol=${encodeURIComponent(symbol)}`];
+            if (date) {
+                query.push(`date=${encodeURIComponent(date)}`);
+            }
+            return request(`/api/holdings/fx-rate?${query.join("&")}`);
+        },
         deleteHolding: (id) => request(`/api/holdings/${id}`, { method: "DELETE" }),
         tradeHolding: (trade) => request("/api/holdings/trade", { method: "POST", body: JSON.stringify(trade) }),
         getRecentTrades: (limit = 30) => request(`/api/holdings/trades?limit=${encodeURIComponent(limit)}`),
@@ -92,4 +99,3 @@ function clearError(containerId) {
     el.textContent = "";
     el.style.display = "none";
 }
-

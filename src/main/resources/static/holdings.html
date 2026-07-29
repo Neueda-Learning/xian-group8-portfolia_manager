@@ -28,6 +28,15 @@
                     <option value="__OTHER__">Other...</option>
                 </select>
                 <input type="text" id="stockTickerOther" placeholder="Input Other Symbol" style="display:none;">
+                <select id="cashCurrencySelect" style="display:none;">
+                    <option value="CNY_CASH">CNY (RMB)</option>
+                    <option value="USD_CASH">USD (US Dollar)</option>
+                    <option value="EUR_CASH">EUR (Euro)</option>
+                    <option value="INR_CASH">INR (Indian Rupee)</option>
+                    <option value="GBP_CASH">GBP (Pound Sterling)</option>
+                    <option value="JPY_CASH">JPY (Japanese Yen)</option>
+                    <option value="KRW_CASH">KRW (Korean Won)</option>
+                </select>
                 <select id="categoryId" required></select>
             </div>
             <div class="form-row">
@@ -104,6 +113,7 @@
             </div>
             <form id="tradePanelForm">
                 <div class="form-row">
+                    <input type="text" id="modalCategoryId" readonly>
                     <input type="text" id="modalSymbol" readonly>
                     <input type="text" id="modalTradeType" readonly>
                 </div>
@@ -131,4 +141,3 @@
 <script src="js/holdings.js"></script>
 </body>
 </html>
-

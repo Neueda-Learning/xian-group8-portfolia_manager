@@ -1,7 +1,9 @@
 renderNavbar("holdings");
 
 const CASH_SYMBOL = "USD_CASH";
+const CASH_CATEGORY_ID = 3;
 const SUPPORTED_TICKERS = new Set(["C", "AMZN", "TSLA", "FB", "AAPL"]);
+const CASH_SYMBOLS = new Set(["CNY_CASH", "USD_CASH", "EUR_CASH", "INR_CASH", "GBP_CASH", "JPY_CASH", "KRW_CASH"]);
 
 let stockCategoryId = null;
 let latestHoldings = [];
@@ -22,6 +24,11 @@ function todayIsoDate() {
 
 function getSelectedSymbolForAdd() {
     const categoryId = Number(el("categoryId").value || 0);
+    if (categoryId === CASH_CATEGORY_ID) {
+        const selectedCashSymbol = (el("cashCurrencySelect").value || CASH_SYMBOL).trim().toUpperCase();
+        return CASH_SYMBOLS.has(selectedCashSymbol) ? selectedCashSymbol : CASH_SYMBOL;
+    }
+
     const isStockCategory = stockCategoryId !== null && categoryId === stockCategoryId;
 
     if (!isStockCategory) {
@@ -37,40 +44,78 @@ function getSelectedSymbolForAdd() {
 
 function updateSymbolInputsByCategory() {
     const categoryId = Number(el("categoryId").value || 0);
+    const isCashCategory = categoryId === CASH_CATEGORY_ID;
     const isStockCategory = stockCategoryId !== null && categoryId === stockCategoryId;
+    const symbolInput = el("symbol");
+    const stockSelect = el("stockTickerSelect");
+    const stockOther = el("stockTickerOther");
+    const cashSelect = el("cashCurrencySelect");
 
-    if (isStockCategory) {
-        el("symbol").style.display = "none";
-        el("symbol").required = false;
-        el("stockTickerSelect").style.display = "";
-        el("stockTickerSelect").required = true;
+    if (isCashCategory) {
+        symbolInput.style.display = "none";
+        symbolInput.required = false;
+        stockSelect.style.display = "none";
+        stockSelect.required = false;
+        stockSelect.value = "";
+        stockOther.style.display = "none";
+        stockOther.value = "";
+        cashSelect.style.display = "";
+        cashSelect.required = true;
         return;
     }
 
-    el("symbol").style.display = "";
-    el("symbol").required = true;
-    el("stockTickerSelect").style.display = "none";
-    el("stockTickerSelect").required = false;
-    el("stockTickerSelect").value = "";
-    el("stockTickerOther").style.display = "none";
-    el("stockTickerOther").value = "";
+    cashSelect.style.display = "none";
+    cashSelect.required = false;
+
+    if (isStockCategory) {
+        symbolInput.style.display = "none";
+        symbolInput.required = false;
+        stockSelect.style.display = "";
+        stockSelect.required = true;
+        return;
+    }
+
+    symbolInput.style.display = "";
+    symbolInput.required = true;
+    stockSelect.style.display = "none";
+    stockSelect.required = false;
+    stockSelect.value = "";
+    stockOther.style.display = "none";
+    stockOther.value = "";
 }
 
-function updateSharesPlaceholder() {
-    const symbol = getSelectedSymbolForAdd();
-    el("shares").placeholder = symbol === CASH_SYMBOL ? "Amount (USD)" : "Shares";
-}
 
 async function updateCurrentPricePreview() {
     const symbol = getSelectedSymbolForAdd();
     const input = el("currentPrice");
+    const purchasePriceInput = el("purchasePrice");
 
-    if (symbol === CASH_SYMBOL) {
-        input.readOnly = true;
-        input.value = "0.01";
+    const categoryId = Number(el("categoryId").value || 0);
+    if (categoryId === CASH_CATEGORY_ID) {
+        try {
+            const purchaseDate = el("purchaseDate").value || "";
+            const [latestFx, purchaseFx] = await Promise.all([
+                Api.getFxRate(symbol),
+                Api.getFxRate(symbol, purchaseDate)
+            ]);
+            const latestUsdRate = Number(latestFx.usdRate || 0);
+            const purchaseUsdRate = Number(purchaseFx.usdRate || 0);
+            if (!latestUsdRate || latestUsdRate <= 0 || !purchaseUsdRate || purchaseUsdRate <= 0) {
+                throw new Error("invalid FX rate");
+            }
+            input.readOnly = true;
+            input.value = String(latestUsdRate);
+            purchasePriceInput.readOnly = true;
+            purchasePriceInput.value = String(purchaseUsdRate);
+        } catch (error) {
+            input.value = "";
+            purchasePriceInput.value = "";
+            showError("error", "Failed to preview FX rate: " + error.message);
+        }
         return;
     }
 
+    purchasePriceInput.readOnly = false;
     if (SUPPORTED_TICKERS.has(symbol)) {
         input.readOnly = true;
         input.value = "";
@@ -93,7 +138,7 @@ async function updateCurrentPricePreview() {
 }
 
 function getTradeButtons(holding) {
-    if (holding.cashAsset) {
+    if (holding.categoryId === CASH_CATEGORY_ID) {
         return `
             <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'DEPOSIT')">Deposit</button>
             <button class="secondary trade-action-btn" onclick="tradeForHolding(${holding.id}, 'WITHDRAW')">Withdraw</button>
@@ -164,13 +209,16 @@ function openTradePanel(holding, tradeTypeCode) {
     currentTradeHoldingId = holding.id;
     currentTradeTypeCode = tradeTypeCode;
 
-    const isCash = !!holding.cashAsset;
+    const isCash = CASH_CATEGORY_ID === holding.categoryId;
+    const cashCurrency = String(holding.symbol || "").replace("_CASH", "");
     el("tradePanelTitle").textContent = `${tradeTypeCode} ${holding.symbol}`;
+    el("modalCategoryId").value = holding.categoryId || "";
+    el("modalCategoryId").style.display = "none";
     el("modalSymbol").value = holding.symbol || "";
     el("modalTradeType").value = tradeTypeCode;
     el("modalTradeShares").value = "";
-    el("modalTradeShares").placeholder = isCash ? "Amount (USD)" : "Shares";
-    el("modalTradePrice").value = String(isCash ? 0.01 : Number(holding.currentPrice || 1));
+    el("modalTradeShares").placeholder = isCash ? `Amount (${cashCurrency})` : "Shares";
+    el("modalTradePrice").value = String(Number(holding.currentPrice || 1));
     el("modalTradePrice").readOnly = isCash;
     el("modalTradeFee").value = "0";
     el("modalTradeDate").value = todayIsoDate();
@@ -178,6 +226,11 @@ function openTradePanel(holding, tradeTypeCode) {
     el("tradePanelError").style.display = "none";
     el("tradePanel").style.display = "flex";
     document.body.style.overflow = "hidden";
+    if (isCash) {
+        updateTradePricePreview().catch((error) => {
+            showTradePanelError("Failed to preview FX rate: " + error.message);
+        });
+    }
 }
 
 function closeTradePanel() {
@@ -209,7 +262,6 @@ async function loadCategories() {
         stockCategoryId = stockCategory ? Number(stockCategory.id) : null;
 
         updateSymbolInputsByCategory();
-        updateSharesPlaceholder();
         await updateCurrentPricePreview();
     } catch (error) {
         showError("error", "Failed to load asset categories: " + error.message);
@@ -242,6 +294,21 @@ async function tradeForHolding(id, tradeTypeCode) {
         return;
     }
     openTradePanel(holding, tradeTypeCode);
+}
+
+async function updateTradePricePreview() {
+    const holding = latestHoldings.find(h => h.id === currentTradeHoldingId);
+    if (!holding || holding.categoryId !== CASH_CATEGORY_ID) {
+        return;
+    }
+
+    const tradeDate = el("modalTradeDate").value || todayIsoDate();
+    const fx = await Api.getFxRate(holding.symbol, tradeDate);
+    const usdRate = Number(fx.usdRate || 0);
+    if (!usdRate || usdRate <= 0) {
+        throw new Error("invalid FX rate");
+    }
+    el("modalTradePrice").value = String(usdRate);
 }
 
 async function deleteHolding(id) {
@@ -313,8 +380,10 @@ async function handleTradeSubmit(event) {
     }
 
     const payload = {
+        holdingId: currentTradeHoldingId,
         assetSymbol: (holding.symbol || "").toUpperCase(),
         tradeTypeCode: currentTradeTypeCode,
+        categoryId: Number(el("modalCategoryId").value),
         tradeShares: Number(el("modalTradeShares").value),
         tradePrice: Number(el("modalTradePrice").value),
         tradeDate: el("modalTradeDate").value || todayIsoDate(),
@@ -334,7 +403,6 @@ async function handleTradeSubmit(event) {
 
 async function handleCategoryChange() {
     updateSymbolInputsByCategory();
-    updateSharesPlaceholder();
     await updateCurrentPricePreview();
 }
 
@@ -349,13 +417,47 @@ async function handleTickerSelectChange() {
         el("stockTickerOther").value = "";
     }
 
-    updateSharesPlaceholder();
     await updateCurrentPricePreview();
 }
 
-async function handleSymbolInputChange() {
-    updateSharesPlaceholder();
+async function handleCashSymbolChange() {
     await updateCurrentPricePreview();
+}
+
+async function handlePurchaseDateChange() {
+    await updateCurrentPricePreview();
+}
+
+async function handleTradeDateChange() {
+    try {
+        await updateTradePricePreview();
+    } catch (error) {
+        showTradePanelError("Failed to preview FX rate: " + error.message);
+    }
+}
+
+async function handleSymbolInputChange() {
+    await updateCurrentPricePreview();
+}
+
+function enableNativeDatePicker(inputId) {
+    const input = el(inputId);
+    if (!input) {
+        return;
+    }
+
+    const openPicker = () => {
+        if (typeof input.showPicker === "function") {
+            try {
+                input.showPicker();
+            } catch (error) {
+                // Ignore browser restrictions and keep native input behavior.
+            }
+        }
+    };
+
+    input.addEventListener("focus", openPicker);
+    input.addEventListener("click", openPicker);
 }
 
 function bindEvents() {
@@ -364,6 +466,9 @@ function bindEvents() {
 
     el("categoryId").addEventListener("change", handleCategoryChange);
     el("stockTickerSelect").addEventListener("change", handleTickerSelectChange);
+    el("cashCurrencySelect").addEventListener("change", handleCashSymbolChange);
+    el("purchaseDate").addEventListener("change", handlePurchaseDateChange);
+    el("modalTradeDate").addEventListener("change", handleTradeDateChange);
     el("stockTickerOther").addEventListener("input", handleSymbolInputChange);
     el("symbol").addEventListener("input", handleSymbolInputChange);
 
@@ -381,6 +486,8 @@ function bindEvents() {
 
 async function initPage() {
     el("purchaseDate").value = todayIsoDate();
+    enableNativeDatePicker("purchaseDate");
+    enableNativeDatePicker("modalTradeDate");
     bindEvents();
 
     await loadCategories();
@@ -392,4 +499,3 @@ window.tradeForHolding = tradeForHolding;
 window.deleteHolding = deleteHolding;
 
 initPage();
-

@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +59,18 @@ public class HoldingController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Failed to fetch sample price data", e);
+        }
+    }
+
+    @GetMapping("/fx-rate")
+    public Map<String, Object> getFxRate(@RequestParam String symbol,
+                                         @RequestParam(required = false) LocalDate date) {
+        try {
+            return service.getCashFxRate(symbol, date);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Failed to fetch FX rate", e);
         }
     }
 
