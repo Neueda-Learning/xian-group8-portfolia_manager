@@ -12,6 +12,7 @@ import java.util.List;
 
 @Repository
 public class AssetCategoryRepository {
+
     private final JdbcTemplate jdbcTemplate;
 
     public AssetCategoryRepository(JdbcTemplate jdbcTemplate) {
@@ -55,4 +56,12 @@ public class AssetCategoryRepository {
         String sql = "delete from asset_category where id = ?";
         return jdbcTemplate.update(sql, id);
     }
+
+    public int deleteById(Integer id) {
+        String sql = "delete from asset_category where id=?";
+        return jdbcTemplate.update(sql, id);
+    }
+
+
 }
+
