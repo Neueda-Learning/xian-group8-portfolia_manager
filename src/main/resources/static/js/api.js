@@ -81,3 +81,10 @@ function showError(containerId, message) {
     el.style.display = "block";
 }
 
+function clearError(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.textContent = "";
+    el.style.display = "none";
+}
+

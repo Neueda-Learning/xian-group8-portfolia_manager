@@ -51,6 +51,7 @@
             const categories = await Api.getCategories();
             const body = document.getElementById("categoriesBody");
             const empty = document.getElementById("categoriesEmpty");
+            clearError("error");
             if (!categories.length) {
                 body.innerHTML = "";
                 empty.style.display = "block";
@@ -74,6 +75,7 @@
 
         const deleteBtn = event?.target;
         if (deleteBtn) deleteBtn.disabled = true;
+        clearError("error");
 
         try {
             await Api.deleteCategory(id);
@@ -87,10 +89,12 @@
             }
             if (deleteBtn) deleteBtn.disabled = false;
         }
+
     }
 
     document.getElementById("addCategoryForm").addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearError("error");
 
         // Get and trim values
         const categoryNameInput = document.getElementById("categoryName").value.trim();
@@ -112,10 +116,9 @@
             event.target.reset();
             await loadCategories();
         } catch (e) {
-            // Check for duplicate category error
-            if (e.message && e.message.includes("Duplicate entry")) {
-                showError("error", "⚠️ This category already exists. Please use a different name.");
-            } else if (e.message && e.message.includes("cannot be empty")) {
+            if (e.message && (e.message.includes("DUPLICATE_CATEGORY") || e.message.includes("Category already exists"))) {
+                showError("error", "⚠️ This category already exists. Names that only differ by spaces or letter case are treated as duplicates.");
+            } else if (e.message && (e.message.includes("VALIDATION_ERROR") || e.message.includes("cannot be empty"))) {
                 showError("error", "⚠️ Category name cannot be empty");
             } else {
                 showError("error", "Failed to add category: " + e.message);
