@@ -71,26 +71,55 @@
 
     async function deleteCategory(id) {
         if (!confirm("Delete this asset category?")) return;
+
+        const deleteBtn = event?.target;
+        if (deleteBtn) deleteBtn.disabled = true;
+
         try {
             await Api.deleteCategory(id);
             await loadCategories();
         } catch (e) {
-            showError("error", "Failed to delete category: " + e.message);
+            // 检查是否是"分类还有持仓"的特殊错误
+            if (e.message && (e.message.includes("HAS_HOLDINGS") || e.message.includes("cannot delete category"))) {
+                showError("error", "⚠️ Cannot delete category: This category still has holdings. Please delete all holdings in this category first.");
+            } else {
+                showError("error", "Failed to delete category: " + e.message);
+            }
+            if (deleteBtn) deleteBtn.disabled = false;
         }
     }
 
     document.getElementById("addCategoryForm").addEventListener("submit", async (event) => {
         event.preventDefault();
+
+        // Get and trim values
+        const categoryNameInput = document.getElementById("categoryName").value.trim();
+        const descriptionInput = document.getElementById("description").value.trim();
+
+        // Validate on client side first
+        if (!categoryNameInput) {
+            showError("error", "Category name cannot be empty");
+            return;
+        }
+
         const category = {
-            categoryName: document.getElementById("categoryName").value.trim(),
-            description: document.getElementById("description").value.trim()
+            categoryName: categoryNameInput,
+            description: descriptionInput
         };
+
         try {
             await Api.addCategory(category);
             event.target.reset();
             await loadCategories();
         } catch (e) {
-            showError("error", "Failed to add category: " + e.message);
+            // Check for duplicate category error
+            if (e.message && e.message.includes("Duplicate entry")) {
+                showError("error", "⚠️ This category already exists. Please use a different name.");
+            } else if (e.message && e.message.includes("cannot be empty")) {
+                showError("error", "⚠️ Category name cannot be empty");
+            } else {
+                showError("error", "Failed to add category: " + e.message);
+            }
         }
     });
 

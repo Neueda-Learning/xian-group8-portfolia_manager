@@ -10,8 +10,25 @@ const Api = (() => {
             ...options
         });
         if (!response.ok) {
-            const text = await response.text().catch(() => "");
-            throw new Error(`Request to ${path} failed (${response.status}): ${text}`);
+            const contentType = response.headers.get("content-type") || "";
+            let errorMessage = "";
+            let errorData = {};
+
+            try {
+                if (contentType.includes("application/json")) {
+                    errorData = await response.json();
+                    errorMessage = errorData.message || "Unknown error";
+                    if (errorData.error) {
+                        errorMessage += ` [${errorData.error}]`;
+                    }
+                } else {
+                    errorMessage = await response.text().catch(() => "");
+                }
+            } catch (e) {
+                errorMessage = "Failed to parse error response";
+            }
+
+            throw new Error(`Request to ${path} failed (${response.status}): ${errorMessage}`);
         }
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("application/json")) {
