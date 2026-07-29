@@ -1,4 +1,4 @@
-package com.example.portfoilo_manager.model;
+package com.group8.portfolio_manager.model;
 
 public class AssetCategory {
     private Integer id;
