@@ -253,7 +253,13 @@
         document.getElementById("modalTradeShares").placeholder = isCash ? "Amount (USD)" : "Shares";
         document.getElementById("modalTradePrice").value = String(isCash ? 0.01 : Number(holding.currentPrice || 1));
         document.getElementById("modalTradeFee").value = "0";
-        document.getElementById("modalTradeDate").valueAsDate = new Date();
+        // 默认日期设为今天
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, "0");
+        const day = String(today.getDate()).padStart(2, "0");
+        document.getElementById("modalTradeDate").value = `${year}-${month}-${day}`;
+        document.getElementById("modalTradeNote").value = "";
         document.getElementById("tradePanelError").style.display = "none";
         document.getElementById("tradePanel").style.display = "flex";
         document.body.style.overflow = "hidden";
@@ -503,36 +509,121 @@
             return;
         }
 
-        const tradeShares = Number(document.getElementById("modalTradeShares").value);
-        const tradePrice = Number(document.getElementById("modalTradePrice").value);
-        const fee = Number(document.getElementById("modalTradeFee").value || 0);
-        const tradeDate = (document.getElementById("modalTradeDate").value || "").trim();
+        const sharesInput = document.getElementById("modalTradeShares").value.trim();
+        const priceInput = document.getElementById("modalTradePrice").value.trim();
+        const feeInput = document.getElementById("modalTradeFee").value.trim();
+        let tradeDateInput = (document.getElementById("modalTradeDate").value || "").trim();
         const note = (document.getElementById("modalTradeNote").value || "").trim();
 
-        if (!Number.isFinite(tradeShares) || tradeShares <= 0) {
-            showTradePanelError("Shares must be a positive number.");
+        // ===== 数据校验 =====
+
+        // 1. 份额校验
+        if (!sharesInput) {
+            showTradePanelError("Shares/Amount is required.");
             return;
         }
-        if (!Number.isFinite(tradePrice) || tradePrice <= 0) {
-            showTradePanelError("Price must be a positive number.");
+        const tradeShares = Number(sharesInput);
+        if (!Number.isFinite(tradeShares)) {
+            showTradePanelError("Shares/Amount must be a valid number.");
             return;
         }
-        if (!Number.isFinite(fee) || fee < 0) {
-            showTradePanelError("Fee must be >= 0.");
+        if (tradeShares <= 0) {
+            showTradePanelError("Shares/Amount must be positive (> 0).");
             return;
         }
-        if (!tradeDate) {
-            showTradePanelError("Trade date is required.");
+        // 检查份额是否过大（前端合理性检查，具体上限可调整）
+        if (tradeShares > 1e10) {
+            showTradePanelError("Shares/Amount is too large. Please use a reasonable value.");
             return;
         }
 
+        // 2. 价格校验
+        if (!priceInput) {
+            showTradePanelError("Price is required.");
+            return;
+        }
+        const tradePrice = Number(priceInput);
+        if (!Number.isFinite(tradePrice)) {
+            showTradePanelError("Price must be a valid number.");
+            return;
+        }
+        if (tradePrice <= 0) {
+            showTradePanelError("Price must be positive (> 0).");
+            return;
+        }
+        if (tradePrice > 1e10) {
+            showTradePanelError("Price is too large. Please use a reasonable value.");
+            return;
+        }
+
+        // 3. 费用校验
+        const fee = Number(feeInput || 0);
+        if (!Number.isFinite(fee)) {
+            showTradePanelError("Fee must be a valid number.");
+            return;
+        }
+        if (fee < 0) {
+            showTradePanelError("Fee must be non-negative (>= 0).");
+            return;
+        }
+        if (fee > 1e10) {
+            showTradePanelError("Fee is too large.");
+            return;
+        }
+
+        // 4. 日期校验 + 默认回填今天
+        if (!tradeDateInput) {
+            // 若未填日期，默认使用今天
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, "0");
+            const day = String(today.getDate()).padStart(2, "0");
+            tradeDateInput = `${year}-${month}-${day}`;
+            document.getElementById("modalTradeDate").value = tradeDateInput;
+        }
+        const tradeDate = new Date(tradeDateInput);
+        if (isNaN(tradeDate.getTime())) {
+            showTradePanelError("Trade date is invalid.");
+            return;
+        }
+        // 不允许未来日期
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tradeDateOnly = new Date(tradeDate);
+        tradeDateOnly.setHours(0, 0, 0, 0);
+        if (tradeDateOnly > today) {
+            showTradePanelError("Trade date cannot be in the future.");
+            return;
+        }
+
+        // 5. 针对 SELL/WITHDRAW 的份额检查
         const symbol = (holding.symbol || "").toUpperCase();
+        const isCash = symbol === CASH_SYMBOL;
+        if ((currentTradeTypeCode === "SELL" || currentTradeTypeCode === "WITHDRAW") && !isCash) {
+            // SELL 时检查持有份额
+            if (holding.shares < tradeShares) {
+                showTradePanelError(`Insufficient shares. You have ${holding.shares}, but trying to sell ${tradeShares}.`);
+                return;
+            }
+        }
+
+        // 6. 额外的合理性检查：交易总金额
+        const tradeAmount = tradeShares * tradePrice;
+        if (!Number.isFinite(tradeAmount) || tradeAmount <= 0) {
+            showTradePanelError("Trade amount is invalid.");
+            return;
+        }
+        if (tradeAmount > 1e15) {
+            showTradePanelError("Trade amount is unreasonably large.");
+            return;
+        }
+
         const trade = {
             assetSymbol: symbol,
             tradeTypeCode: currentTradeTypeCode,
             tradeShares,
             tradePrice,
-            tradeDate,
+            tradeDate: tradeDateInput,
             fee,
             note
         };
@@ -551,6 +642,14 @@
     updateAddHoldingSymbolMode();
     updateAddHoldingSharesPlaceholder();
     updateAddHoldingCurrentPricePreview();
+
+    // 默认购买日期为今天
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    document.getElementById("purchaseDate").value = `${year}-${month}-${day}`;
+
     loadHoldings();
     loadRecentTrades();
 </script>

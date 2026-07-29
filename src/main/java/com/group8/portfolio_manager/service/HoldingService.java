@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 public class HoldingService {
@@ -41,6 +42,7 @@ public class HoldingService {
     private static final int CASH_CATEGORY_ID = 3;
     private static final BigDecimal CASH_UNIT_PRICE = new BigDecimal("0.01");
     private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
+    private static final Pattern SYMBOL_PATTERN = Pattern.compile("^[A-Z0-9_.-]{1,30}$");
 
     private final HoldingRepository repository;
     private final TradeRecordWideRepository tradeRecordWideRepository;
@@ -77,8 +79,14 @@ public class HoldingService {
         if (holding.getShares() == null) {
             throw new IllegalArgumentException("shares is required");
         }
+        if (holding.getShares().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("shares must be >= 0");
+        }
         if (holding.getPurchasePrice() == null) {
             throw new IllegalArgumentException("purchasePrice is required");
+        }
+        if (holding.getPurchasePrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("purchasePrice must be > 0");
         }
         if (holding.getPurchaseDate() == null) {
             throw new IllegalArgumentException("purchaseDate is required");
@@ -86,9 +94,17 @@ public class HoldingService {
 
         String symbol = holding.getSymbol().trim().toUpperCase(Locale.ROOT);
         holding.setSymbol(symbol);
+        validateSymbolFormat(symbol, "symbol");
+
+        if (holding.getPurchaseDate().isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("purchaseDate cannot be in the future");
+        }
+
         String companyName = holding.getCompanyName();
         if (companyName == null || companyName.isBlank()) {
             holding.setCompanyName(DEFAULT_COMPANY_NAMES.getOrDefault(symbol, symbol));
+        } else if (companyName.length() > 100) {
+            throw new IllegalArgumentException("companyName length must be <= 100");
         }
 
         if (CASH_SYMBOL.equals(symbol)) {
@@ -128,7 +144,12 @@ public class HoldingService {
 
         String symbol = request.getAssetSymbol().trim().toUpperCase(Locale.ROOT);
         String tradeType = request.getTradeTypeCode().trim().toUpperCase(Locale.ROOT);
+        validateSymbolFormat(symbol, "assetSymbol");
+
         BigDecimal tradeShares = request.getTradeShares();
+        if (tradeShares.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("tradeShares must be > 0");
+        }
         BigDecimal tradePrice = request.getTradePrice();
         BigDecimal actualTradeShares = tradeShares; // Original value for non-cash, will be adjusted for cash
 
@@ -143,6 +164,9 @@ public class HoldingService {
 
         BigDecimal fee = request.getFee() == null ? BigDecimal.ZERO : request.getFee();
         LocalDate tradeDate = request.getTradeDate() == null ? LocalDate.now() : request.getTradeDate();
+        if (tradeDate.isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("tradeDate cannot be in the future");
+        }
         BigDecimal tradeAmount = actualTradeShares.multiply(tradePrice);
 
         Holding cashHolding = ensureCashHolding();
@@ -162,6 +186,15 @@ public class HoldingService {
             if (assetHolding == null) {
                 throw new IllegalArgumentException("asset symbol not found: " + symbol);
             }
+
+            if (tradePrice == null) {
+                tradePrice = assetHolding.getCurrentPrice();
+                if (tradePrice == null || tradePrice.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("tradePrice is required when current price is unavailable");
+                }
+                tradeAmount = actualTradeShares.multiply(tradePrice);
+            }
+
             cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, actualTradeShares, tradePrice, tradeAmount, fee, tradeDate);
         }
 
@@ -324,6 +357,10 @@ public class HoldingService {
         if (request.getTradeTypeCode() == null || request.getTradeTypeCode().isBlank()) {
             throw new IllegalArgumentException("tradeTypeCode is required");
         }
+        String normalizedTradeType = request.getTradeTypeCode().trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("BUY", "SELL", "DEPOSIT", "WITHDRAW").contains(normalizedTradeType)) {
+            throw new IllegalArgumentException("tradeTypeCode must be one of BUY/SELL/DEPOSIT/WITHDRAW");
+        }
         if (request.getTradeShares() == null || request.getTradeShares().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("tradeShares must be > 0");
         }
@@ -333,26 +370,35 @@ public class HoldingService {
         if (request.getFee() != null && request.getFee().compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("fee must be >= 0");
         }
+        if (request.getTradeDate() != null && request.getTradeDate().isAfter(LocalDate.now())) {
+            throw new IllegalArgumentException("tradeDate cannot be in the future");
+        }
+        if (request.getNote() != null && request.getNote().length() > 200) {
+            throw new IllegalArgumentException("note length must be <= 200");
+        }
     }
 
     private BigDecimal applyCashOnlyTrade(Holding cashHolding, String tradeType, BigDecimal tradeAmount, BigDecimal fee, BigDecimal tradePrice, LocalDate tradeDate) {
-        BigDecimal oldCash = safeValue(cashHolding.getShares());
-        BigDecimal cashChange;
+        // cashHolding.shares is stored in cent units (1 share = 0.01 USD).
+        BigDecimal oldCashShares = safeValue(cashHolding.getShares());
+        BigDecimal cashChangeUsd;
         if ("DEPOSIT".equals(tradeType)) {
-            cashChange = tradeAmount.subtract(fee);
-            cashHolding.setShares(oldCash.add(cashChange));
+            cashChangeUsd = tradeAmount.subtract(fee);
+            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
+            cashHolding.setShares(oldCashShares.add(cashChangeShares));
         } else {
-            cashChange = tradeAmount.add(fee).negate();
-            BigDecimal newCash = oldCash.add(cashChange);
-            if (newCash.compareTo(BigDecimal.ZERO) < 0) {
+            cashChangeUsd = tradeAmount.add(fee).negate();
+            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
+            BigDecimal newCashShares = oldCashShares.add(cashChangeShares);
+            if (newCashShares.compareTo(BigDecimal.ZERO) < 0) {
                 throw new IllegalArgumentException("cash is not enough");
             }
-            cashHolding.setShares(newCash);
+            cashHolding.setShares(newCashShares);
         }
         cashHolding.setCurrentPrice(CASH_UNIT_PRICE);
         cashHolding.setPurchasePrice(CASH_UNIT_PRICE);
         repository.updateHoldingAfterTrade(cashHolding.getId(), cashHolding.getShares(), cashHolding.getPurchasePrice(), cashHolding.getCurrentPrice());
-        return cashChange;
+        return cashChangeUsd;
     }
 
     private BigDecimal applyAssetTrade(Holding assetHolding,
@@ -363,11 +409,13 @@ public class HoldingService {
                                        BigDecimal tradeAmount,
                                        BigDecimal fee, LocalDate tradeDate) {
         BigDecimal oldAssetShares = safeValue(assetHolding.getShares());
-        BigDecimal oldCash = safeValue(cashHolding.getShares());
+        // cashHolding.shares is stored in cent units.
+        BigDecimal oldCashShares = safeValue(cashHolding.getShares());
 
         if ("BUY".equals(tradeType)) {
-            BigDecimal cashNeed = tradeAmount.add(fee);
-            if (oldCash.compareTo(cashNeed) < 0) {
+            BigDecimal cashNeedUsd = tradeAmount.add(fee);
+            BigDecimal cashNeedShares = cashNeedUsd.multiply(CENT_FACTOR);
+            if (oldCashShares.compareTo(cashNeedShares) < 0) {
                 throw new IllegalArgumentException("cash is not enough for buy trade");
             }
 
@@ -385,13 +433,14 @@ public class HoldingService {
             assetHolding.setCurrentPrice(effectiveAssetPrice);
             repository.updateHoldingAfterTrade(assetHolding.getId(), assetHolding.getShares(), assetHolding.getPurchasePrice(), assetHolding.getCurrentPrice());
 
-            BigDecimal cashChange = cashNeed.negate();
-            cashHolding.setShares(oldCash.add(cashChange));
+            BigDecimal cashChangeUsd = cashNeedUsd.negate();
+            BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
+            cashHolding.setShares(oldCashShares.add(cashChangeShares));
             BigDecimal effectiveCashPrice = tradeDate.equals(LocalDate.now())
                     ? CASH_UNIT_PRICE
                     : safeCurrentPrice(cashHolding.getCurrentPrice(), CASH_UNIT_PRICE);
             repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), effectiveCashPrice);
-            return cashChange;
+            return cashChangeUsd;
         }
 
         if (oldAssetShares.compareTo(tradeShares) < 0) {
@@ -406,10 +455,11 @@ public class HoldingService {
         assetHolding.setCurrentPrice(effectiveAssetPrice);
         repository.updateHoldingSharesAndPrice(assetHolding.getId(), assetHolding.getShares(), assetHolding.getCurrentPrice());
 
-        BigDecimal cashChange = tradeAmount.subtract(fee);
-        cashHolding.setShares(oldCash.add(cashChange));
+        BigDecimal cashChangeUsd = tradeAmount.subtract(fee);
+        BigDecimal cashChangeShares = cashChangeUsd.multiply(CENT_FACTOR);
+        cashHolding.setShares(oldCashShares.add(cashChangeShares));
         repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), CASH_UNIT_PRICE);
-        return cashChange;
+        return cashChangeUsd;
     }
 
     private Holding ensureCashHolding() {
@@ -503,5 +553,11 @@ public class HoldingService {
             return fallbackPrice;
         }
         return currentPrice;
+    }
+
+    private void validateSymbolFormat(String symbol, String fieldName) {
+        if (!SYMBOL_PATTERN.matcher(symbol).matches()) {
+            throw new IllegalArgumentException(fieldName + " format is invalid");
+        }
     }
 }
