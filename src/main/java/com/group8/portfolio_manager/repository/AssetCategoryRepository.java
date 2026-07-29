@@ -39,6 +39,12 @@ public class AssetCategoryRepository {
                 ), id);
     }
 
+    public boolean existsByNormalizedName(String normalizedName) {
+        String sql = "select count(*) from asset_category where lower(replace(category_name, ' ', '')) = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, normalizedName);
+        return count != null && count > 0;
+    }
+
     public int save(AssetCategory category) {
         String sql = "insert into asset_category (category_name, description) values (?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -57,10 +63,6 @@ public class AssetCategoryRepository {
         return jdbcTemplate.update(sql, id);
     }
 
-    public int deleteById(Integer id) {
-        String sql = "delete from asset_category where id=?";
-        return jdbcTemplate.update(sql, id);
-    }
 
 
 }

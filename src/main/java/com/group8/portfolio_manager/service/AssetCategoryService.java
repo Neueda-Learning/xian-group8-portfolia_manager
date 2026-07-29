@@ -2,8 +2,10 @@ package com.group8.portfolio_manager.service;
 
 import com.group8.portfolio_manager.model.AssetCategory;
 import com.group8.portfolio_manager.repository.AssetCategoryRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.List;
 
 @Service
@@ -24,22 +26,37 @@ public class AssetCategoryService {
     }
 
     public AssetCategory addCategory(AssetCategory category) {
-        // Trim whitespace to prevent duplicate categories like "bike" and "bike "
-        if (category.getCategoryName() != null) {
-            category.setCategoryName(category.getCategoryName().trim());
-        }
-        if (category.getDescription() != null) {
-            category.setDescription(category.getDescription().trim());
-        }
-        
-        // Validate category name is not empty after trimming
-        if (category.getCategoryName() == null || category.getCategoryName().isEmpty()) {
+        String cleanedName = cleanText(category.getCategoryName());
+        String cleanedDescription = cleanText(category.getDescription());
+
+        category.setCategoryName(cleanedName);
+        category.setDescription(cleanedDescription);
+
+        if (cleanedName == null || cleanedName.isEmpty()) {
             throw new IllegalArgumentException("Category name cannot be empty");
         }
-        
-        int id = repository.save(category);
+
+        String normalizedName = normalizeCategoryName(cleanedName);
+        if (repository.existsByNormalizedName(normalizedName)) {
+            throw new IllegalStateException("Category already exists");
+        }
+
+        int id;
+        try {
+            id = repository.save(category);
+        } catch (DataIntegrityViolationException e) {
+            throw new IllegalStateException("Category already exists", e);
+        }
         category.setId(id);
         return category;
+    }
+
+    private String cleanText(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private String normalizeCategoryName(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     public String deleteCategory(Integer id) {

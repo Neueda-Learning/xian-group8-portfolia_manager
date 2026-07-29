@@ -5,8 +5,6 @@ import com.group8.portfolio_manager.service.AssetCategoryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -33,8 +31,20 @@ public class AssetCategoryController {
     }
 
     @PostMapping
-    public AssetCategory addCategory(@RequestBody AssetCategory category) {
-        return service.addCategory(category);
+    public ResponseEntity<?> addCategory(@RequestBody AssetCategory category) {
+        try {
+            return ResponseEntity.ok(service.addCategory(category));
+        } catch (IllegalArgumentException e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", e.getMessage());
+            response.put("error", "VALIDATION_ERROR");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        } catch (IllegalStateException e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", e.getMessage());
+            response.put("error", "DUPLICATE_CATEGORY");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+        }
     }
 
     @DeleteMapping("/{id}")
