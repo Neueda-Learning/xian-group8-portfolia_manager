@@ -14,8 +14,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
+import java.net.URLEncoder;import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -171,11 +170,13 @@ public class HoldingService {
                 break;
             } catch (IllegalStateException | ClassCastException | NumberFormatException e) {
                 failed.add(symbol + " (parse error: " + e.getMessage() + ")");
+            } catch (RuntimeException e) {
+                failed.add(symbol + " (unexpected error: " + e.getMessage() + ")");
             }
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("requestedSymbols", symbols);
+        result.put("requestedSymbols", new ArrayList<>(symbols));
         result.put("updatedRows", updatedRows);
         result.put("skippedUnsupported", skipped);
         result.put("failed", failed);
@@ -218,8 +219,20 @@ public class HoldingService {
         if (!(closeObj instanceof List<?> closes) || closes.isEmpty()) {
             throw new IllegalStateException("missing close data");
         }
-        Object latest = closes.get(closes.size() - 1);
-        return new BigDecimal(String.valueOf(latest));
+        for (int i = closes.size() - 1; i >= 0; i--) {
+            Object latest = closes.get(i);
+            if (latest == null) {
+                continue;
+            }
+
+            String value = String.valueOf(latest).trim();
+            if (value.isEmpty() || "null".equalsIgnoreCase(value)) {
+                continue;
+            }
+            return new BigDecimal(value);
+        }
+
+        throw new IllegalStateException("missing valid close data");
     }
 
     private Map<String, Object> fetchPriceDataMap(String symbol) throws IOException, InterruptedException {
@@ -234,7 +247,8 @@ public class HoldingService {
             throw new IllegalStateException("HTTP " + response.statusCode());
         }
 
-        Map<String, Object> root = jsonParser.parseMap(response.body());
+        String sanitizedBody = response.body().replaceAll("\\bNaN\\b", "null");
+        Map<String, Object> root = jsonParser.parseMap(sanitizedBody);
         Object priceDataObj = root.get("price_data");
         if (!(priceDataObj instanceof Map<?, ?> priceDataMap)) {
             throw new IllegalStateException("missing price_data");
