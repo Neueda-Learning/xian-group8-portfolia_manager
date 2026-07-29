@@ -18,13 +18,22 @@
         <form id="addHoldingForm">
             <div class="form-row">
                 <input type="text" id="symbol" placeholder="Symbol (e.g. AAPL)" required>
-                <input type="text" id="companyName" placeholder="Company Name" required>
+                <select id="stockTickerSelect" style="display:none;">
+                    <option value="">Select Symbol</option>
+                    <option value="C">C</option>
+                    <option value="AMZN">AMZN</option>
+                    <option value="TSLA">TSLA</option>
+                    <option value="FB">FB</option>
+                    <option value="AAPL">AAPL</option>
+                    <option value="__OTHER__">Other...</option>
+                </select>
+                <input type="text" id="stockTickerOther" placeholder="Input Other Symbol" style="display:none;">
                 <select id="categoryId" required></select>
             </div>
             <div class="form-row">
                 <input type="number" step="0.0001" id="shares" placeholder="Shares" required>
                 <input type="number" step="0.01" id="purchasePrice" placeholder="Purchase Price" required>
-                <input type="number" step="0.01" id="currentPrice" placeholder="Current Price" required>
+                <input type="number" step="0.01" id="currentPrice" placeholder="Current Price (Auto from API)" readonly>
                 <input type="date" id="purchaseDate" required>
             </div>
             <button type="submit">+ Add Holding</button>
@@ -49,7 +58,8 @@
                 <th>Company</th>
                 <th>Category</th>
                 <th>Shares</th>
-                <th>Price</th>
+                <th>Purchase Price</th>
+                <th>Current Price</th>
                 <th>Value</th>
                 <th>P/L</th>
                 <th>Actions</th>
@@ -121,6 +131,8 @@
 <script>
     renderNavbar("holdings");
     const CASH_SYMBOL = "USD_CASH";
+    const SUPPORTED_TICKERS = new Set(["C", "AMZN", "TSLA", "FB", "AAPL"]);
+    let stockCategoryId = null;
     let latestHoldings = [];
     let currentTradeHoldingId = null;
     let currentTradeTypeCode = null;
@@ -128,6 +140,81 @@
     function formatNumber(value, digits = 4) {
         const num = Number(value ?? 0);
         return num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: digits });
+    }
+
+    function getAddHoldingSymbol() {
+        const categoryId = Number(document.getElementById("categoryId").value || 0);
+        if (stockCategoryId !== null && categoryId === stockCategoryId) {
+            const selected = (document.getElementById("stockTickerSelect").value || "").trim().toUpperCase();
+            if (selected === "__OTHER__") {
+                return (document.getElementById("stockTickerOther").value || "").trim().toUpperCase();
+            }
+            return selected;
+        }
+        return (document.getElementById("symbol").value || "").trim().toUpperCase();
+    }
+
+    function updateAddHoldingSymbolMode() {
+        const categoryId = Number(document.getElementById("categoryId").value || 0);
+        const isStockCategory = stockCategoryId !== null && categoryId === stockCategoryId;
+        const symbolInput = document.getElementById("symbol");
+        const stockSelect = document.getElementById("stockTickerSelect");
+        const stockOther = document.getElementById("stockTickerOther");
+
+        if (isStockCategory) {
+            symbolInput.style.display = "none";
+            symbolInput.required = false;
+            stockSelect.style.display = "";
+            stockSelect.required = true;
+        } else {
+            symbolInput.style.display = "";
+            symbolInput.required = true;
+            stockSelect.style.display = "none";
+            stockSelect.required = false;
+            stockSelect.value = "";
+            stockOther.style.display = "none";
+            stockOther.value = "";
+        }
+    }
+
+    function updateAddHoldingSharesPlaceholder() {
+        const symbol = getAddHoldingSymbol();
+        const sharesInput = document.getElementById("shares");
+        sharesInput.placeholder = symbol === CASH_SYMBOL ? "Amount (USD)" : "Shares";
+    }
+
+    async function updateAddHoldingCurrentPricePreview() {
+        const symbol = getAddHoldingSymbol();
+        const currentPriceInput = document.getElementById("currentPrice");
+        const isSupportedStock = SUPPORTED_TICKERS.has(symbol);
+
+        if (symbol === CASH_SYMBOL) {
+            currentPriceInput.readOnly = true;
+            currentPriceInput.value = "0.01";
+            return;
+        }
+
+        if (isSupportedStock) {
+            currentPriceInput.readOnly = true;
+            currentPriceInput.value = "";
+            try {
+                const priceSeries = await Api.getPriceSeries(symbol);
+                const closes = Array.isArray(priceSeries?.close) ? priceSeries.close : [];
+                if (closes.length) {
+                    const latest = closes[closes.length - 1];
+                    currentPriceInput.value = String(latest);
+                }
+            } catch (e) {
+                currentPriceInput.value = "";
+                showError("error", "Failed to preview current price: " + e.message);
+            }
+            return;
+        }
+
+        // For other symbols, allow manual current price input.
+        currentPriceInput.readOnly = false;
+        currentPriceInput.placeholder = "Current Price (Manual for other symbols)";
+        currentPriceInput.value = "";
     }
 
     function getTradeButtons(holding) {
@@ -183,6 +270,8 @@
             const categories = await Api.getCategories();
             const select = document.getElementById("categoryId");
             select.innerHTML = categories.map(c => `<option value="${c.id}">${c.categoryName}</option>`).join("");
+            const stockCategory = categories.find(c => String(c.categoryName || "").toLowerCase() === "stock");
+            stockCategoryId = stockCategory ? Number(stockCategory.id) : null;
 
             const categoryFilter = document.getElementById("holdingCategoryFilter");
             const selectedFilter = categoryFilter.value;
@@ -193,6 +282,10 @@
             if (selectedFilter && categories.some(c => String(c.id) === selectedFilter)) {
                 categoryFilter.value = selectedFilter;
             }
+
+            updateAddHoldingSymbolMode();
+            updateAddHoldingSharesPlaceholder();
+            await updateAddHoldingCurrentPricePreview();
         } catch (e) {
             showError("error", "Failed to load asset categories: " + e.message);
         }
@@ -220,8 +313,8 @@
         body.innerHTML = holdings.map(h => {
             const isCash = (h.symbol || "").toUpperCase() === CASH_SYMBOL;
             // For cash: shares is in cents, display as USD; for others: display as-is
-            const displayShares = isCash ? (Number(h.shares || 0)).toFixed(2) : h.shares;
-            const value = isCash ? h.shares : h.shares * h.currentPrice;
+            const displayShares = h.shares;
+            const value = h.shares * h.currentPrice;
             const pl = (h.currentPrice - h.purchasePrice) * h.shares;
             return `
                 <tr>
@@ -229,6 +322,7 @@
                     <td>${h.companyName}</td>
                     <td>${h.categoryName ?? ""}</td>
                     <td>${displayShares}</td>
+                    <td>${formatCurrency(h.purchasePrice)}</td>
                     <td>${formatCurrency(h.currentPrice)}</td>
                     <td>${formatCurrency(value)}</td>
                     <td class="${pl >= 0 ? "value positive" : "value negative"}">${pl >= 0 ? "+" : ""}${formatCurrency(pl)}</td>
@@ -331,22 +425,62 @@
 
     document.getElementById("addHoldingForm").addEventListener("submit", async (event) => {
         event.preventDefault();
+
+        const symbol = getAddHoldingSymbol();
+        if (!symbol) {
+            showError("error", "Symbol is required.");
+            return;
+        }
+
+        const currentPriceRaw = document.getElementById("currentPrice").value;
+        const currentPrice = currentPriceRaw === "" ? null : Number(currentPriceRaw);
         const holding = {
-            symbol: document.getElementById("symbol").value.trim().toUpperCase(),
-            companyName: document.getElementById("companyName").value.trim(),
+            symbol,
             categoryId: Number(document.getElementById("categoryId").value),
             shares: Number(document.getElementById("shares").value),
             purchasePrice: Number(document.getElementById("purchasePrice").value),
-            currentPrice: Number(document.getElementById("currentPrice").value),
+            currentPrice,
             purchaseDate: document.getElementById("purchaseDate").value
         };
         try {
             await Api.addHolding(holding);
             event.target.reset();
+            document.getElementById("stockTickerOther").style.display = "none";
+            document.getElementById("currentPrice").readOnly = true;
+            document.getElementById("currentPrice").placeholder = "Current Price (Auto from API)";
+            updateAddHoldingSymbolMode();
             await loadHoldings();
         } catch (e) {
             showError("error", "Failed to add holding: " + e.message);
         }
+    });
+
+    document.getElementById("categoryId").addEventListener("change", async () => {
+        updateAddHoldingSymbolMode();
+        updateAddHoldingSharesPlaceholder();
+        await updateAddHoldingCurrentPricePreview();
+    });
+
+    document.getElementById("stockTickerSelect").addEventListener("change", async () => {
+        const selected = (document.getElementById("stockTickerSelect").value || "").trim().toUpperCase();
+        const otherInput = document.getElementById("stockTickerOther");
+        if (selected === "__OTHER__") {
+            otherInput.style.display = "";
+            otherInput.focus();
+        } else {
+            otherInput.style.display = "none";
+            otherInput.value = "";
+        }
+        updateAddHoldingSharesPlaceholder();
+        await updateAddHoldingCurrentPricePreview();
+    });
+    document.getElementById("stockTickerOther").addEventListener("input", async () => {
+        updateAddHoldingSharesPlaceholder();
+        await updateAddHoldingCurrentPricePreview();
+    });
+    document.getElementById("symbol").addEventListener("input", async () => {
+        updateAddHoldingSharesPlaceholder();
+        await updateAddHoldingCurrentPricePreview();
     });
 
     document.getElementById("holdingCategoryFilter").addEventListener("change", renderHoldingsTable);
@@ -414,6 +548,9 @@
     });
 
     loadCategoriesIntoSelect();
+    updateAddHoldingSymbolMode();
+    updateAddHoldingSharesPlaceholder();
+    updateAddHoldingCurrentPricePreview();
     loadHoldings();
     loadRecentTrades();
 </script>

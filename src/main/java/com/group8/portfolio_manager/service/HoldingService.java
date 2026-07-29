@@ -27,6 +27,14 @@ import java.util.*;
 public class HoldingService {
     private static final String SAMPLE_PRICE_API = "https://c4rm9elh30.execute-api.us-east-1.amazonaws.com/default/cachedPriceData?ticker=";
     private static final Set<String> SUPPORTED_TICKERS = Set.of("C", "AMZN", "TSLA", "FB", "AAPL");
+    private static final Map<String, String> DEFAULT_COMPANY_NAMES = Map.of(
+            "C", "Citigroup Inc",
+            "AMZN", "Amazon.com Inc",
+            "TSLA", "Tesla Inc",
+            "FB", "Meta Platforms Inc",
+            "AAPL", "Apple Inc",
+            "USD_CASH", "US Dollar Cash"
+    );
     private static final String CASH_SYMBOL = "USD_CASH";
     private static final String CASH_ASSET_NAME = "US Dollar Cash";
     private static final String CASH_CATEGORY_NAME = "Cash";
@@ -63,9 +71,6 @@ public class HoldingService {
         if (holding.getSymbol() == null || holding.getSymbol().isBlank()) {
             throw new IllegalArgumentException("symbol is required");
         }
-        if (holding.getCompanyName() == null || holding.getCompanyName().isBlank()) {
-            throw new IllegalArgumentException("companyName is required");
-        }
         if (holding.getCategoryId() == null || holding.getCategoryId() <= 0) {
             throw new IllegalArgumentException("categoryId must be a positive integer");
         }
@@ -75,11 +80,37 @@ public class HoldingService {
         if (holding.getPurchasePrice() == null) {
             throw new IllegalArgumentException("purchasePrice is required");
         }
-        if (holding.getCurrentPrice() == null) {
-            throw new IllegalArgumentException("currentPrice is required");
-        }
         if (holding.getPurchaseDate() == null) {
             throw new IllegalArgumentException("purchaseDate is required");
+        }
+
+        String symbol = holding.getSymbol().trim().toUpperCase(Locale.ROOT);
+        holding.setSymbol(symbol);
+        String companyName = holding.getCompanyName();
+        if (companyName == null || companyName.isBlank()) {
+            holding.setCompanyName(DEFAULT_COMPANY_NAMES.getOrDefault(symbol, symbol));
+        }
+
+        if (CASH_SYMBOL.equals(symbol)) {
+            // Cash shares are stored in cent units; input amount is treated as USD.
+            holding.setShares(holding.getShares().multiply(CENT_FACTOR));
+            holding.setCurrentPrice(CASH_UNIT_PRICE);
+            holding.setPurchasePrice(CASH_UNIT_PRICE);
+        } else {
+            if (SUPPORTED_TICKERS.contains(symbol)) {
+                try {
+                    holding.setCurrentPrice(fetchLatestClosePrice(symbol));
+                } catch (IOException e) {
+                    throw new IllegalStateException("failed to fetch currentPrice from market API", e);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("interrupted while fetching currentPrice from market API", e);
+                }
+            } else {
+                if (holding.getCurrentPrice() == null || holding.getCurrentPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("currentPrice is required for unsupported ticker: " + symbol);
+                }
+            }
         }
 
         int id = repository.save(holding);
@@ -122,7 +153,7 @@ public class HoldingService {
             if (!"DEPOSIT".equals(tradeType) && !"WITHDRAW".equals(tradeType)) {
                 throw new IllegalArgumentException("cash only supports DEPOSIT or WITHDRAW");
             }
-            cashChange = applyCashOnlyTrade(cashHolding, tradeType, tradeAmount, fee, tradePrice);
+            cashChange = applyCashOnlyTrade(cashHolding, tradeType, tradeAmount, fee, tradePrice, tradeDate);
         } else {
             if (!"BUY".equals(tradeType) && !"SELL".equals(tradeType)) {
                 throw new IllegalArgumentException("non-cash assets only support BUY or SELL");
@@ -131,7 +162,7 @@ public class HoldingService {
             if (assetHolding == null) {
                 throw new IllegalArgumentException("asset symbol not found: " + symbol);
             }
-            cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, actualTradeShares, tradePrice, tradeAmount, fee);
+            cashChange = applyAssetTrade(assetHolding, cashHolding, tradeType, actualTradeShares, tradePrice, tradeAmount, fee, tradeDate);
         }
 
         TradeRecordWide tradeRecord = buildTradeRecord(
@@ -304,7 +335,7 @@ public class HoldingService {
         }
     }
 
-    private BigDecimal applyCashOnlyTrade(Holding cashHolding, String tradeType, BigDecimal tradeAmount, BigDecimal fee, BigDecimal tradePrice) {
+    private BigDecimal applyCashOnlyTrade(Holding cashHolding, String tradeType, BigDecimal tradeAmount, BigDecimal fee, BigDecimal tradePrice, LocalDate tradeDate) {
         BigDecimal oldCash = safeValue(cashHolding.getShares());
         BigDecimal cashChange;
         if ("DEPOSIT".equals(tradeType)) {
@@ -318,8 +349,8 @@ public class HoldingService {
             }
             cashHolding.setShares(newCash);
         }
-        cashHolding.setCurrentPrice(tradePrice);
-        cashHolding.setPurchasePrice(BigDecimal.ONE);
+        cashHolding.setCurrentPrice(CASH_UNIT_PRICE);
+        cashHolding.setPurchasePrice(CASH_UNIT_PRICE);
         repository.updateHoldingAfterTrade(cashHolding.getId(), cashHolding.getShares(), cashHolding.getPurchasePrice(), cashHolding.getCurrentPrice());
         return cashChange;
     }
@@ -330,7 +361,7 @@ public class HoldingService {
                                        BigDecimal tradeShares,
                                        BigDecimal tradePrice,
                                        BigDecimal tradeAmount,
-                                       BigDecimal fee) {
+                                       BigDecimal fee, LocalDate tradeDate) {
         BigDecimal oldAssetShares = safeValue(assetHolding.getShares());
         BigDecimal oldCash = safeValue(cashHolding.getShares());
 
@@ -348,12 +379,18 @@ public class HoldingService {
 
             assetHolding.setShares(newAssetShares);
             assetHolding.setPurchasePrice(avgCost);
-            assetHolding.setCurrentPrice(tradePrice);
+            BigDecimal effectiveAssetPrice = tradeDate.equals(LocalDate.now())
+                    ? tradePrice
+                    : safeCurrentPrice(assetHolding.getCurrentPrice(), tradePrice);
+            assetHolding.setCurrentPrice(effectiveAssetPrice);
             repository.updateHoldingAfterTrade(assetHolding.getId(), assetHolding.getShares(), assetHolding.getPurchasePrice(), assetHolding.getCurrentPrice());
 
             BigDecimal cashChange = cashNeed.negate();
             cashHolding.setShares(oldCash.add(cashChange));
-            repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), BigDecimal.ONE);
+            BigDecimal effectiveCashPrice = tradeDate.equals(LocalDate.now())
+                    ? CASH_UNIT_PRICE
+                    : safeCurrentPrice(cashHolding.getCurrentPrice(), CASH_UNIT_PRICE);
+            repository.updateHoldingSharesAndPrice(cashHolding.getId(), cashHolding.getShares(), effectiveCashPrice);
             return cashChange;
         }
 
@@ -363,7 +400,10 @@ public class HoldingService {
 
         BigDecimal newAssetShares = oldAssetShares.subtract(tradeShares);
         assetHolding.setShares(newAssetShares);
-        assetHolding.setCurrentPrice(tradePrice);
+        BigDecimal effectiveAssetPrice = tradeDate.equals(LocalDate.now())
+                ? tradePrice
+                : safeCurrentPrice(assetHolding.getCurrentPrice(), tradePrice);
+        assetHolding.setCurrentPrice(effectiveAssetPrice);
         repository.updateHoldingSharesAndPrice(assetHolding.getId(), assetHolding.getShares(), assetHolding.getCurrentPrice());
 
         BigDecimal cashChange = tradeAmount.subtract(fee);
@@ -456,5 +496,12 @@ public class HoldingService {
 
     private BigDecimal safeValue(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal safeCurrentPrice(BigDecimal currentPrice, BigDecimal fallbackPrice) {
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return fallbackPrice;
+        }
+        return currentPrice;
     }
 }
