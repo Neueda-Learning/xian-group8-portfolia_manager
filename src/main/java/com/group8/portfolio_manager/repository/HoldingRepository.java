@@ -27,6 +27,12 @@ public class HoldingRepository {
         return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs));
     }
 
+    public List<Holding> findAllByCategoryId(int categoryId) {
+        String sql = "select h.*, c.category_name from holdings h " +
+                "join asset_category c on h.category_id = c.id where h.category_id = ? order by h.id";
+        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRow(rs), categoryId);
+    }
+
     public Holding findById(int id) {
         String sql = "select h.*, c.category_name from holdings h " +
                 "join asset_category c on h.category_id = c.id where h.id=?";

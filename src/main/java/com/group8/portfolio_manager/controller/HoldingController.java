@@ -23,8 +23,12 @@ public class HoldingController {
     }
 
     @GetMapping
-    public List<Holding> getAllHoldings() {
-        return service.getAllHoldings();
+    public List<Holding> getAllHoldings(@RequestParam(required = false) Integer categoryId) {
+        try {
+            return service.getAllHoldings(categoryId);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        }
     }
 
     @GetMapping("/{id}")

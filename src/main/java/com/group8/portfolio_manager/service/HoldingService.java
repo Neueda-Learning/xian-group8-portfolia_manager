@@ -59,7 +59,17 @@ public class HoldingService {
     }
 
     public List<Holding> getAllHoldings() {
-        return repository.findAll();
+        return getAllHoldings(null);
+    }
+
+    public List<Holding> getAllHoldings(Integer categoryId) {
+        if (categoryId == null) {
+            return repository.findAll();
+        }
+        if (categoryId <= 0) {
+            throw new IllegalArgumentException("categoryId must be a positive integer");
+        }
+        return repository.findAllByCategoryId(categoryId);
     }
 
     public Holding getHoldingById(int id) {

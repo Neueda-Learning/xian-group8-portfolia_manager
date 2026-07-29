@@ -43,7 +43,12 @@ const Api = (() => {
         getAllocation: () => request("/api/allocation"),
 
         // Holdings
-        getHoldings: () => request("/api/holdings"),
+        getHoldings: (categoryId = "") => {
+            if (categoryId === "" || categoryId === null || categoryId === undefined) {
+                return request("/api/holdings");
+            }
+            return request(`/api/holdings?categoryId=${encodeURIComponent(categoryId)}`);
+        },
         addHolding: (holding) => request("/api/holdings", { method: "POST", body: JSON.stringify(holding) }),
         refreshHoldingPrices: () => request("/api/holdings/refresh-prices", { method: "POST" }),
         getPriceSeries: (ticker) => request(`/api/holdings/price-series?ticker=${encodeURIComponent(ticker)}`),

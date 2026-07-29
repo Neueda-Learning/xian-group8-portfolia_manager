@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class Holding {
+    private static final String CASH_SYMBOL = "USD_CASH";
+    private static final BigDecimal CENT_FACTOR = new BigDecimal("100");
+
     private Integer id;
     private String symbol;
     private String companyName;
@@ -126,6 +129,20 @@ public class Holding {
         return currentPrice.subtract(purchasePrice)
                 .divide(purchasePrice, 6, java.math.RoundingMode.HALF_UP)
                 .doubleValue();
+    }
+
+    public BigDecimal getDisplayShares() {
+        if (shares == null) {
+            return BigDecimal.ZERO;
+        }
+        if (CASH_SYMBOL.equalsIgnoreCase(symbol)) {
+            return shares.divide(CENT_FACTOR, 2, java.math.RoundingMode.HALF_UP);
+        }
+        return shares;
+    }
+
+    public boolean getCashAsset() {
+        return CASH_SYMBOL.equalsIgnoreCase(symbol);
     }
 
 }
