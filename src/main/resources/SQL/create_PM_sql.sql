@@ -99,3 +99,86 @@ select * from portfolio_history;
 select count(*) as price_history_row_count from price_history;
 
 
+-- =========================
+-- 4. Trade Record Wide Table (NO FK, no join needed)
+-- =========================
+CREATE TABLE trade_record_wide (
+                                   id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'Trade record primary key',
+                                   trade_no VARCHAR(40) NOT NULL COMMENT 'Business trade number',
+
+    -- Asset redundant fields
+                                   asset_symbol VARCHAR(30) NOT NULL COMMENT 'Asset ticker symbol, e.g. AAPL/BTC/USD_CASH',
+                                   asset_name VARCHAR(100) NOT NULL COMMENT 'Asset full name',
+                                   asset_category_name VARCHAR(30) NOT NULL COMMENT 'Asset category name, e.g. Stock/Cash/Cryptocurrency',
+                                   is_cash_asset TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=cash asset, 0=non-cash asset',
+
+    -- Trade type redundant fields
+                                   trade_type_code VARCHAR(20) NOT NULL COMMENT 'BUY/SELL/DEPOSIT/WITHDRAW',
+                                   trade_type_name VARCHAR(50) NOT NULL COMMENT 'Trade type display name',
+
+    -- Trade core fields
+                                   trade_shares DECIMAL(18,4) NOT NULL COMMENT 'Traded shares/units, positive number',
+                                   buy_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Buy unit price, used when trade_type_code=BUY/DEPOSIT',
+                                   sell_price DECIMAL(18,2) DEFAULT NULL COMMENT 'Sell unit price, used when trade_type_code=SELL/WITHDRAW',
+                                   trade_amount DECIMAL(18,2) NOT NULL COMMENT 'Trade amount = shares * unit price',
+                                   fee DECIMAL(18,2) NOT NULL DEFAULT 0.00 COMMENT 'Transaction fee',
+                                   currency VARCHAR(10) NOT NULL DEFAULT 'USD' COMMENT 'Currency code',
+
+    -- Cash impact fields (direct query friendly)
+                                   cash_asset_symbol VARCHAR(30) NOT NULL DEFAULT 'USD_CASH' COMMENT 'Cash asset symbol',
+                                   cash_change DECIMAL(18,2) NOT NULL COMMENT 'Cash impact: positive=increase, negative=decrease',
+
+    -- Date and note
+                                   trade_date DATE NOT NULL COMMENT 'Trade date',
+                                   note VARCHAR(200) DEFAULT NULL COMMENT 'Optional note',
+                                   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Create time'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Wide trade record table without foreign keys';
+
+-- Suggested indexes for common query scenarios
+CREATE INDEX idx_trw_asset_symbol ON trade_record_wide(asset_symbol);
+CREATE INDEX idx_trw_trade_date ON trade_record_wide(trade_date);
+CREATE INDEX idx_trw_trade_type_code ON trade_record_wide(trade_type_code);
+CREATE INDEX idx_trw_asset_category_name ON trade_record_wide(asset_category_name);
+
+-- =========================
+-- Sample data
+-- =========================
+INSERT INTO trade_record_wide
+(trade_no, asset_symbol, asset_name, asset_category_name, is_cash_asset,
+ trade_type_code, trade_type_name, trade_shares, buy_price, sell_price,
+ trade_amount, fee, currency, cash_asset_symbol, cash_change, trade_date, note)
+VALUES
+-- AAPL BUY: cash decreases
+('TRX202402010001', 'AAPL', 'Apple Inc', 'Stock', 0,
+ 'BUY', 'Buy', 50.0000, 130.00, NULL,
+ 6500.00, 2.50, 'USD', 'USD_CASH', -6502.50, '2024-02-01', 'Add AAPL position'),
+
+-- AAPL SELL: cash increases
+('TRX202406150001', 'AAPL', 'Apple Inc', 'Stock', 0,
+ 'SELL', 'Sell', 20.0000, NULL, 150.00,
+ 3000.00, 2.50, 'USD', 'USD_CASH', 2997.50, '2024-06-15', 'Partial sell AAPL'),
+
+-- TSLA BUY
+('TRX202403050001', 'TSLA', 'Tesla Inc', 'Stock', 0,
+ 'BUY', 'Buy', 10.0000, 700.00, NULL,
+ 7000.00, 3.00, 'USD', 'USD_CASH', -7003.00, '2024-03-05', 'Add TSLA'),
+
+-- BTC SELL
+('TRX202407010001', 'BTC', 'Bitcoin', 'Cryptocurrency', 0,
+ 'SELL', 'Sell', 0.0500, NULL, 32000.00,
+ 1600.00, 5.00, 'USD', 'USD_CASH', 1595.00, '2024-07-01', 'Take BTC profit'),
+
+-- Cash DEPOSIT: no other asset change
+('TRX202402200001', 'USD_CASH', 'US Dollar Cash', 'Cash', 1,
+ 'DEPOSIT', 'Cash Deposit', 2000.0000, 1.00, NULL,
+ 2000.00, 0.00, 'USD', 'USD_CASH', 2000.00, '2024-02-20', 'Monthly deposit'),
+
+-- Cash WITHDRAW: no other asset change
+('TRX202405100001', 'USD_CASH', 'US Dollar Cash', 'Cash', 1,
+ 'WITHDRAW', 'Cash Withdraw', 500.0000, NULL, 1.00,
+ 500.00, 0.00, 'USD', 'USD_CASH', -500.00, '2024-05-10', 'Withdraw for expense');
+
+-- quick check
+SELECT * FROM trade_record_wide ORDER BY trade_date, id;
+
+
