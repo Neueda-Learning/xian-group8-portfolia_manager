@@ -348,20 +348,45 @@ async function refreshPrices() {
     }
 }
 
+function validateNonNegativeNumber(inputId, label, errorHandler) {
+    const raw = (el(inputId).value || "").trim();
+    if (raw === "") {
+        return true;
+    }
+
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+        errorHandler(label + " must be a valid number.");
+        return false;
+    }
+    if (value < 0) {
+        errorHandler(label + " cannot be negative.");
+        return false;
+    }
+
+    return true;
+}
+
+function validateAddFormInputs() {
+    clearError("error");
+    const sharesOk = validateNonNegativeNumber("shares", "Shares", (message) => showError("error", message));
+    const purchasePriceOk = validateNonNegativeNumber("purchasePrice", "Purchase Price", (message) => showError("error", message));
+    return sharesOk && purchasePriceOk;
+}
+
+function validateTradeFormInputs() {
+    el("tradePanelError").style.display = "none";
+    el("tradePanelError").textContent = "";
+    const sharesOk = validateNonNegativeNumber("modalTradeShares", "Shares", showTradePanelError);
+    const tradePriceOk = validateNonNegativeNumber("modalTradePrice", "Trade Price", showTradePanelError);
+    return sharesOk && tradePriceOk;
+}
+
 async function handleAddHoldingSubmit(event) {
     event.preventDefault();
-    clearError("error");
 
     const sharesValue = Number(el("shares").value);
     const purchasePriceValue = Number(el("purchasePrice").value);
-    if (sharesValue < 0) {
-        alert("Shares cannot be negative.");
-        return;
-    }
-    if (purchasePriceValue < 0) {
-        alert("Purchase Price cannot be negative.");
-        return;
-    }
 
     const currentPriceRaw = el("currentPrice").value;
     const payload = {
@@ -397,14 +422,6 @@ async function handleTradeSubmit(event) {
 
     const tradeSharesValue = Number(el("modalTradeShares").value);
     const tradePriceValue = Number(el("modalTradePrice").value);
-    if (tradeSharesValue < 0) {
-        alert("Shares cannot be negative.");
-        return;
-    }
-    if (tradePriceValue < 0) {
-        alert("Trade Price cannot be negative.");
-        return;
-    }
 
     const payload = {
         holdingId: currentTradeHoldingId,
@@ -467,6 +484,14 @@ async function handleSymbolInputChange() {
     await updateCurrentPricePreview();
 }
 
+function handleAddInputValidate() {
+    validateAddFormInputs();
+}
+
+function handleTradeInputValidate() {
+    validateTradeFormInputs();
+}
+
 function enableNativeDatePicker(inputId) {
     const input = el(inputId);
     if (!input) {
@@ -498,6 +523,10 @@ function bindEvents() {
     el("modalTradeDate").addEventListener("change", handleTradeDateChange);
     el("stockTickerOther").addEventListener("input", handleSymbolInputChange);
     el("symbol").addEventListener("input", handleSymbolInputChange);
+    el("shares").addEventListener("input", handleAddInputValidate);
+    el("purchasePrice").addEventListener("input", handleAddInputValidate);
+    el("modalTradeShares").addEventListener("input", handleTradeInputValidate);
+    el("modalTradePrice").addEventListener("input", handleTradeInputValidate);
 
     el("holdingCategoryFilter").addEventListener("change", loadHoldings);
     el("refreshPricesBtn").addEventListener("click", refreshPrices);
