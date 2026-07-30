@@ -8,6 +8,7 @@
 <body>
 <main>
     <h1>Asset Categories</h1>
+    <div id="error" class="error-banner"></div>
 
     <div class="section">
         <div class="section-header">
@@ -45,15 +46,12 @@
 <script>
     renderNavbar("categories");
 
-    function alertCategoryError(message) {
-        alert(message);
-    }
-
     async function loadCategories() {
         try {
             const categories = await Api.getCategories();
             const body = document.getElementById("categoriesBody");
             const empty = document.getElementById("categoriesEmpty");
+            clearError("error");
             if (!categories.length) {
                 body.innerHTML = "";
                 empty.style.display = "block";
@@ -68,7 +66,7 @@
                 </tr>
             `).join("");
         } catch (e) {
-            alertCategoryError("Failed to load asset categories: " + e.message);
+            showError("error", "Failed to load asset categories: " + e.message);
         }
     }
 
@@ -77,6 +75,7 @@
 
         const deleteBtn = event?.target;
         if (deleteBtn) deleteBtn.disabled = true;
+        clearError("error");
 
         try {
             await Api.deleteCategory(id);
@@ -84,9 +83,9 @@
         } catch (e) {
             // 检查是否是"分类还有持仓"的特殊错误
             if (e.message && (e.message.includes("HAS_HOLDINGS") || e.message.includes("cannot delete category"))) {
-                alertCategoryError("Cannot delete category: This category still has holdings. Please delete all holdings in this category first.");
+                showError("error", "⚠️ Cannot delete category: This category still has holdings. Please delete all holdings in this category first.");
             } else {
-                alertCategoryError("Failed to delete category: " + e.message);
+                showError("error", "Failed to deltegory: " + e.message);
             }
             if (deleteBtn) deleteBtn.disabled = false;
         }
@@ -95,6 +94,7 @@
 
     document.getElementById("addCategoryForm").addEventListener("submit", async (event) => {
         event.preventDefault();
+        clearError("error");
 
         // Get and trim values
         const categoryNameInput = document.getElementById("categoryName").value.trim();
@@ -102,7 +102,7 @@
 
         // Validate on client side first
         if (!categoryNameInput) {
-            alertCategoryError("Category name cannot be empty");
+            showError("error", "Category name cannot be empty");
             return;
         }
 
@@ -117,11 +117,11 @@
             await loadCategories();
         } catch (e) {
             if (e.message && (e.message.includes("DUPLICATE_CATEGORY") || e.message.includes("Category already exists"))) {
-                alertCategoryError("This category already exists. Names that only differ by spaces or letter case are treated as duplicates.");
+                showError("error", "⚠️ This category already exists. Names that only differ by spaces or letter case are treated as duplicates.");
             } else if (e.message && (e.message.includes("VALIDATION_ERROR") || e.message.includes("cannot be empty"))) {
-                alertCategoryError("Category name cannot be empty");
+                showError("error", "⚠️ Category name cannot be empty");
             } else {
-                alertCategoryError("Failed to add category: " + e.message);
+                showError("error", "Failed to add category: " + e.message);
             }
         }
     });
