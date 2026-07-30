@@ -352,12 +352,23 @@ async function handleAddHoldingSubmit(event) {
     event.preventDefault();
     clearError("error");
 
+    const sharesValue = Number(el("shares").value);
+    const purchasePriceValue = Number(el("purchasePrice").value);
+    if (sharesValue < 0) {
+        alert("Shares cannot be negative.");
+        return;
+    }
+    if (purchasePriceValue < 0) {
+        alert("Purchase Price cannot be negative.");
+        return;
+    }
+
     const currentPriceRaw = el("currentPrice").value;
     const payload = {
         symbol: getSelectedSymbolForAdd(),
         categoryId: Number(el("categoryId").value),
-        shares: Number(el("shares").value),
-        purchasePrice: Number(el("purchasePrice").value),
+        shares: sharesValue,
+        purchasePrice: purchasePriceValue,
         currentPrice: currentPriceRaw === "" ? null : Number(currentPriceRaw),
         purchaseDate: el("purchaseDate").value
     };
@@ -384,13 +395,24 @@ async function handleTradeSubmit(event) {
         return;
     }
 
+    const tradeSharesValue = Number(el("modalTradeShares").value);
+    const tradePriceValue = Number(el("modalTradePrice").value);
+    if (tradeSharesValue < 0) {
+        alert("Shares cannot be negative.");
+        return;
+    }
+    if (tradePriceValue < 0) {
+        alert("Trade Price cannot be negative.");
+        return;
+    }
+
     const payload = {
         holdingId: currentTradeHoldingId,
         assetSymbol: (holding.symbol || "").toUpperCase(),
         tradeTypeCode: currentTradeTypeCode,
         categoryId: Number(el("modalCategoryId").value),
-        tradeShares: Number(el("modalTradeShares").value),
-        tradePrice: Number(el("modalTradePrice").value),
+        tradeShares: tradeSharesValue,
+        tradePrice: tradePriceValue,
         tradeDate: el("modalTradeDate").value || todayIsoDate(),
         fee: Number(el("modalTradeFee").value || 0),
         note: (el("modalTradeNote").value || "").trim()
